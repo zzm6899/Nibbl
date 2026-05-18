@@ -155,7 +155,7 @@ private fun FoodLog.toJson() = JSONObject()
     .put("imagePath", imagePath)
     .put("originalImagePath", originalImagePath)
     .put("title", title)
-    .put("category", category.name)
+    .put("category", category.id)
     .put("caffeineMg", caffeineMg ?: JSONObject.NULL)
     .put("cafe", cafe)
     .put("locationName", locationName)
@@ -207,9 +207,9 @@ private fun JSONObject.toFoodLogOrNull(): FoodLog? = runCatching {
 
 private fun parseCategory(raw: String): DrinkCategory {
     val normalized = raw.trim()
-    return DrinkCategory.values().firstOrNull {
-        it.name.equals(normalized, ignoreCase = true) || it.label.equals(normalized, ignoreCase = true)
-    } ?: DrinkCategory.Drink
+    return DrinkCategory.find(normalized)
+        ?: normalized.takeIf { it.isNotBlank() }?.let { DrinkCategory.custom(it, 0xFFD8EFF1.toInt()) }
+        ?: DrinkCategory.Drink
 }
 
 private fun JSONObject.optNonBlankString(name: String): String? =

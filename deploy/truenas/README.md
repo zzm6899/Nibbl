@@ -9,8 +9,11 @@ This stack runs PocketBase on host port `5100`. Your existing Caddy routes both 
 
 ## TrueNAS Scale
 
-1. Create a dataset, for example `/mnt/tank/apps/nibbl`.
-2. Put the files in `deploy/truenas` into that dataset.
+1. Create this dataset layout:
+   - `/mnt/mainstorage/apps/nibbl`
+   - `/mnt/mainstorage/apps/nibbl/pb_data`
+   - `/mnt/mainstorage/apps/nibbl/pb_public`
+2. Put the files in `deploy/truenas` into `/mnt/mainstorage/apps/nibbl`.
 3. Point DNS:
    - `nibbl.z2hs.au` -> your TrueNAS IP/public proxy
    - `api.nibbl.z2hs.au` -> your TrueNAS IP/public proxy

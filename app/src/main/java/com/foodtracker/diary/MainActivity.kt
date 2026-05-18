@@ -108,6 +108,7 @@ import com.foodtracker.diary.data.AppSettingsRepository
 import com.foodtracker.diary.data.BackgroundRemover
 import com.foodtracker.diary.data.CafeCrewPerson
 import com.foodtracker.diary.data.CafeCrewStore
+import com.foodtracker.diary.data.CategoryStore
 import com.foodtracker.diary.data.DiaryLocation
 import com.foodtracker.diary.data.DrinkCategory
 import com.foodtracker.diary.data.FoodLog
@@ -153,11 +154,13 @@ private fun DiaryApp() {
     val repository = remember { FoodLogRepository(context) }
     val settingsRepository = remember { AppSettingsRepository(context) }
     val crewStore = remember { CafeCrewStore(context) }
+    val categoryStore = remember { CategoryStore(context) }
     val remover = remember { BackgroundRemover(context) }
     val locationHelper = remember { LocationHelper(context) }
     var logs by remember { mutableStateOf(emptyList<FoodLog>()) }
     var settings by remember { mutableStateOf(AppSettings()) }
     var crew by remember { mutableStateOf(emptyList<CafeCrewPerson>()) }
+    var categories by remember { mutableStateOf(DrinkCategory.defaults) }
     var section by remember { mutableStateOf(AppSection.Diary) }
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
     var mode by remember { mutableStateOf(CalendarMode.Month) }
@@ -180,6 +183,10 @@ private fun DiaryApp() {
         logs = repository.logs()
         settings = settingsRepository.settings()
         crew = crewStore.ensurePeopleForNames(logs.flatMap { it.friendNames } + settings.displayName)
+        categories = categoryStore.categories()
+        if (selectedCategory != null && categories.none { it == selectedCategory }) {
+            selectedCategory = null
+        }
     }
 
     suspend fun importImage(uri: Uri) {
@@ -286,7 +293,7 @@ private fun DiaryApp() {
                             onFriend = { selectedFriend = it },
                         )
                         Spacer(Modifier.height(8.dp))
-                        CategoryRail(selectedCategory = selectedCategory, onCategory = { selectedCategory = it })
+                        CategoryRail(categories = categories, selectedCategory = selectedCategory, onCategory = { selectedCategory = it })
                         ActiveFilters(
                             selectedFriend = selectedFriend,
                             selectedCategory = selectedCategory,
@@ -367,9 +374,21 @@ private fun DiaryApp() {
                     AppSection.Settings -> SettingsScreen(
                         settings = settings,
                         selectedDate = selectedDate,
+                        categories = categories,
                         onSettings = { next ->
                             scope.launch {
                                 settings = settingsRepository.save(next)
+                            }
+                        },
+                        onAddCategory = { label ->
+                            scope.launch {
+                                categories = categoryStore.add(label)
+                            }
+                        },
+                        onDeleteCategory = { category ->
+                            scope.launch {
+                                categories = categoryStore.delete(category.id)
+                                if (selectedCategory == category) selectedCategory = null
                             }
                         },
                         onShareDay = {
@@ -418,6 +437,7 @@ private fun DiaryApp() {
                 }
             },
             crewNames = crew.map { it.displayName },
+            categories = categories,
         )
     }
 
@@ -450,6 +470,7 @@ private fun DiaryApp() {
         LogEditDialog(
             log = log,
             crewNames = crew.map { it.displayName },
+            categories = categories,
             onDismiss = { editLog = null },
             onSave = { updated ->
                 scope.launch {
@@ -547,14 +568,19 @@ private fun CrewScreen(crew: List<CafeCrewPerson>, onAdd: (String) -> Unit, onDe
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun SettingsScreen(
     settings: AppSettings,
     selectedDate: LocalDate,
+    categories: List<DrinkCategory>,
     onSettings: (AppSettings) -> Unit,
+    onAddCategory: (String) -> Unit,
+    onDeleteCategory: (DrinkCategory) -> Unit,
     onShareDay: () -> Unit,
 ) {
     var displayName by remember(settings.displayName) { mutableStateOf(settings.displayName) }
     var shareHost by remember(settings.shareHost) { mutableStateOf(settings.shareHost) }
+    var categoryName by remember { mutableStateOf("") }
     LazyColumn(contentPadding = PaddingValues(bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
@@ -593,6 +619,80 @@ private fun SettingsScreen(
                         Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
                         Text("Create link for ${selectedDate.format(DateTimeFormatter.ofPattern("d MMM"))}")
+                    }
+                }
+            }
+        }
+        item {
+            Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Food + drink types", fontWeight = FontWeight.Black)
+                    Text("Add custom types for boba, smoothies, dessert, lunch, or anything else you track.", color = MaterialTheme.colorScheme.secondary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = categoryName,
+                            onValueChange = { categoryName = it.take(28) },
+                            label = { Text("New type") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                        )
+                        Button(
+                            onClick = {
+                                val clean = categoryName.trim()
+                                if (clean.isNotBlank()) {
+                                    onAddCategory(clean)
+                                    categoryName = ""
+                                }
+                            },
+                        ) {
+                            Text("Add")
+                        }
+                    }
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        categories.forEach { category ->
+                            if (category.builtIn) {
+                                AssistChip(
+                                    onClick = {},
+                                    label = { Text(category.label) },
+                                    leadingIcon = {
+                                        Box(
+                                            Modifier
+                                                .size(14.dp)
+                                                .clip(CircleShape)
+                                                .background(categoryColor(category))
+                                        )
+                                    },
+                                )
+                            } else {
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.clickable { onDeleteCategory(category) },
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Box(
+                                            Modifier
+                                                .size(14.dp)
+                                                .clip(CircleShape)
+                                                .background(categoryColor(category))
+                                        )
+                                        Text(category.label, fontWeight = FontWeight.SemiBold)
+                                        Icon(
+                                            Icons.Rounded.Close,
+                                            contentDescription = "Remove ${category.label}",
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -679,7 +779,7 @@ private fun FriendRail(friends: List<String>, selectedFriend: String?, onFriend:
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-private fun CategoryRail(selectedCategory: DrinkCategory?, onCategory: (DrinkCategory?) -> Unit) {
+private fun CategoryRail(categories: List<DrinkCategory>, selectedCategory: DrinkCategory?, onCategory: (DrinkCategory?) -> Unit) {
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -690,7 +790,7 @@ private fun CategoryRail(selectedCategory: DrinkCategory?, onCategory: (DrinkCat
             onClick = { onCategory(null) },
             label = { Text("All food + drinks") },
         )
-        DrinkCategory.entries.forEach { category ->
+        categories.forEach { category ->
             FilterChip(
                 selected = selectedCategory == category,
                 onClick = { onCategory(if (selectedCategory == category) null else category) },
@@ -1305,7 +1405,13 @@ private fun DetailRow(label: String, value: String) {
 }
 
 @Composable
-private fun LogEditDialog(log: FoodLog, crewNames: List<String>, onDismiss: () -> Unit, onSave: (FoodLog) -> Unit) {
+private fun LogEditDialog(
+    log: FoodLog,
+    crewNames: List<String>,
+    categories: List<DrinkCategory>,
+    onDismiss: () -> Unit,
+    onSave: (FoodLog) -> Unit,
+) {
     var title by remember(log.id) { mutableStateOf(log.title) }
     var category by remember(log.id) { mutableStateOf(log.category) }
     var caffeine by remember(log.id) { mutableStateOf(log.caffeineMg?.toString().orEmpty()) }
@@ -1328,7 +1434,7 @@ private fun LogEditDialog(log: FoodLog, crewNames: List<String>, onDismiss: () -
                 PreviewImageTile("Cutout", log.imagePath, Modifier.fillMaxWidth(), ContentScale.Fit)
                 OutlinedTextField(title, { title = it }, label = { Text("Drink or food") }, modifier = Modifier.fillMaxWidth())
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DrinkCategory.entries.forEach {
+                    categories.forEach {
                         FilterChip(selected = category == it, onClick = { category = it }, label = { Text(it.label) })
                     }
                 }
@@ -1400,9 +1506,10 @@ private fun EntryDialog(
     onDismiss: () -> Unit,
     onSave: (String, DrinkCategory, Int?, String, String, List<String>) -> Unit,
     crewNames: List<String>,
+    categories: List<DrinkCategory>,
 ) {
     var title by remember { mutableStateOf("Matcha") }
-    var category by remember { mutableStateOf(DrinkCategory.Matcha) }
+    var category by remember(categories) { mutableStateOf(categories.firstOrNull { it == DrinkCategory.Matcha } ?: categories.firstOrNull() ?: DrinkCategory.Drink) }
     var caffeine by remember { mutableStateOf("") }
     var cafe by remember { mutableStateOf("") }
     var place by remember { mutableStateOf(pendingLog.location.name) }
@@ -1423,7 +1530,7 @@ private fun EntryDialog(
                 BeforeAfterPreview(pendingLog)
                 OutlinedTextField(title, { title = it }, label = { Text("Drink or food") }, modifier = Modifier.fillMaxWidth())
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DrinkCategory.entries.forEach {
+                    categories.forEach {
                         FilterChip(selected = category == it, onClick = { category = it }, label = { Text(it.label) })
                     }
                 }
@@ -1559,10 +1666,4 @@ private fun weekLabels(weekStartsOnMonday: Boolean): List<String> =
 private fun FoodLog.loggedDate(): LocalDate =
     Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault()).toLocalDate()
 
-private fun categoryColor(category: DrinkCategory): Color = when (category) {
-    DrinkCategory.Matcha -> Color(0xFFDCECC7)
-    DrinkCategory.Coffee -> Color(0xFFEAD4C2)
-    DrinkCategory.Tea -> Color(0xFFFFE6B8)
-    DrinkCategory.Drink -> Color(0xFFD8EFF1)
-    DrinkCategory.Snack -> Color(0xFFFFDFDC)
-}
+private fun categoryColor(category: DrinkCategory): Color = Color(category.colorArgb)
