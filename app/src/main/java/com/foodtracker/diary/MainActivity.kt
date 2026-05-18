@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -379,23 +380,23 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
     Scaffold(
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)) {
-                NavigationBarItem(
+                CuteNavItem(
                     selected = section == AppSection.Diary,
                     onClick = { section = AppSection.Diary },
                     icon = { Icon(Icons.Rounded.CalendarMonth, contentDescription = null) },
-                    label = { Text("Diary") },
+                    label = "Diary",
                 )
-                NavigationBarItem(
+                CuteNavItem(
                     selected = section == AppSection.Crew,
                     onClick = { section = AppSection.Crew },
                     icon = { Icon(Icons.Rounded.Group, contentDescription = null) },
-                    label = { Text("Friends") },
+                    label = "Friends",
                 )
-                NavigationBarItem(
+                CuteNavItem(
                     selected = section == AppSection.Settings,
                     onClick = { section = AppSection.Settings },
                     icon = { Icon(Icons.Rounded.Settings, contentDescription = null) },
-                    label = { Text("Settings") },
+                    label = "Settings",
                 )
             }
         },
@@ -404,19 +405,21 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
         Box(
             Modifier
                 .padding(padding)
-                .fillMaxSize(),
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.background,
+                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f),
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f),
+                        )
+                    )
+                ),
         ) {
+            CuteMotionBackground()
             Column(
                 Modifier
                     .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                MaterialTheme.colorScheme.background,
-                                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f),
-                            )
-                        )
-                    )
                     .padding(16.dp),
             ) {
                 when (section) {
@@ -690,8 +693,90 @@ private fun OnboardingRow(number: String, text: String) {
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun RowScope.CuteNavItem(selected: Boolean, onClick: () -> Unit, icon: @Composable () -> Unit, label: String) {
+    val transition = rememberInfiniteTransition(label = "nav-$label")
+    val bounce by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.12f,
+        animationSpec = infiniteRepeatable(tween(850), RepeatMode.Reverse),
+        label = "navBounce",
+    )
+    NavigationBarItem(
+        selected = selected,
+        onClick = onClick,
+        icon = {
+            Box(
+                modifier = Modifier.graphicsLayer(
+                    scaleX = if (selected) bounce else 1f,
+                    scaleY = if (selected) bounce else 1f,
+                    rotationZ = if (selected) (bounce - 1f) * 14f else 0f,
+                ),
+            ) { icon() }
+        },
+        label = { Text(label) },
+    )
+}
+
+@Composable
+private fun CuteMotionBackground() {
+    val transition = rememberInfiniteTransition(label = "cute-background")
+    val floatA by transition.animateFloat(
+        initialValue = -18f,
+        targetValue = 22f,
+        animationSpec = infiniteRepeatable(tween(3600), RepeatMode.Reverse),
+        label = "floatA",
+    )
+    val floatB by transition.animateFloat(
+        initialValue = 16f,
+        targetValue = -24f,
+        animationSpec = infiniteRepeatable(tween(4300), RepeatMode.Reverse),
+        label = "floatB",
+    )
+    val twinkle by transition.animateFloat(
+        initialValue = 0.34f,
+        targetValue = 0.72f,
+        animationSpec = infiniteRepeatable(tween(1200), RepeatMode.Reverse),
+        label = "twinkle",
+    )
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .size(150.dp)
+                .align(Alignment.TopEnd)
+                .graphicsLayer(alpha = 0.2f, translationY = floatA, translationX = -floatA)
+                .background(MaterialTheme.colorScheme.secondaryContainer, CircleShape),
+        )
+        Box(
+            Modifier
+                .size(116.dp)
+                .align(Alignment.CenterStart)
+                .graphicsLayer(alpha = 0.18f, translationY = floatB)
+                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+        )
+        Icon(
+            Icons.Rounded.AutoAwesome,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.tertiary.copy(alpha = twinkle),
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(28.dp)
+                .graphicsLayer(rotationZ = floatA)
+                .size(24.dp),
+        )
+    }
+}
+
+@Composable
 private fun Header(date: LocalDate, mode: CalendarMode, displayName: String, onPrevious: () -> Unit, onNext: () -> Unit) {
     val ownerName = displayName.trim().ifBlank { AppSettings.DEFAULT_DISPLAY_NAME }
+    val transition = rememberInfiniteTransition(label = "header")
+    val badgeFloat by transition.animateFloat(
+        initialValue = -3f,
+        targetValue = 4f,
+        animationSpec = infiniteRepeatable(tween(1500), RepeatMode.Reverse),
+        label = "badgeFloat",
+    )
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(26.dp),
@@ -703,7 +788,11 @@ private fun Header(date: LocalDate, mode: CalendarMode, displayName: String, onP
             modifier = Modifier
                 .padding(horizontal = 14.dp, vertical = 12.dp),
         ) {
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)) {
+            Surface(
+                modifier = Modifier.graphicsLayer(translationY = badgeFloat, rotationZ = badgeFloat),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+            ) {
                 Icon(
                     Icons.Rounded.CalendarMonth,
                     contentDescription = null,
@@ -723,8 +812,8 @@ private fun Header(date: LocalDate, mode: CalendarMode, displayName: String, onP
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            IconButton(onClick = onPrevious) { Icon(Icons.Rounded.ChevronLeft, contentDescription = "Previous") }
-            IconButton(onClick = onNext) { Icon(Icons.Rounded.ChevronRight, contentDescription = "Next") }
+            IconButton(onClick = onPrevious, modifier = Modifier.graphicsLayer(translationY = -badgeFloat / 2f)) { Icon(Icons.Rounded.ChevronLeft, contentDescription = "Previous") }
+            IconButton(onClick = onNext, modifier = Modifier.graphicsLayer(translationY = badgeFloat / 2f)) { Icon(Icons.Rounded.ChevronRight, contentDescription = "Next") }
         }
     }
 }
@@ -1142,8 +1231,17 @@ private fun SettingsScreen(
 
 @Composable
 private fun AddLogBar(processing: Boolean, onGallery: () -> Unit, onCamera: () -> Unit) {
+    val transition = rememberInfiniteTransition(label = "add-log-bar")
+    val glow by transition.animateFloat(
+        initialValue = 0.985f,
+        targetValue = 1.015f,
+        animationSpec = infiniteRepeatable(tween(1200), RepeatMode.Reverse),
+        label = "addGlow",
+    )
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer(scaleX = if (processing) 1f else glow, scaleY = if (processing) 1f else glow),
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
         tonalElevation = 1.dp,
@@ -1580,9 +1678,21 @@ private fun WeekCalendar(
 @Composable
 private fun WeekDrinkCard(day: LocalDate, logs: List<FoodLog>, isSelected: Boolean, onDate: (LocalDate) -> Unit) {
     val hero = logs.lastOrNull()
+    val transition = rememberInfiniteTransition(label = "week-card")
+    val lift by transition.animateFloat(
+        initialValue = -2f,
+        targetValue = 3f,
+        animationSpec = infiniteRepeatable(tween(1700), RepeatMode.Reverse),
+        label = "weekLift",
+    )
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .graphicsLayer(
+                translationY = if (isSelected) lift else 0f,
+                scaleX = if (isSelected) 1.015f else 1f,
+                scaleY = if (isSelected) 1.015f else 1f,
+            )
             .clickable { onDate(day) },
         shape = RoundedCornerShape(24.dp),
         color = if (isSelected) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
@@ -1626,6 +1736,13 @@ private fun WeekDrinkCard(day: LocalDate, logs: List<FoodLog>, isSelected: Boole
 private fun DayCell(day: LocalDate?, selectedDate: LocalDate, logs: List<FoodLog>, onDate: (LocalDate) -> Unit, modifier: Modifier = Modifier) {
     val isToday = day == LocalDate.now()
     val isSelected = day == selectedDate
+    val transition = rememberInfiniteTransition(label = "day-cell")
+    val wiggle by transition.animateFloat(
+        initialValue = -1.2f,
+        targetValue = 1.2f,
+        animationSpec = infiniteRepeatable(tween(1800), RepeatMode.Reverse),
+        label = "cellWiggle",
+    )
     val cellColor = when {
         isSelected -> MaterialTheme.colorScheme.tertiaryContainer
         isToday -> MaterialTheme.colorScheme.primaryContainer
@@ -1635,6 +1752,11 @@ private fun DayCell(day: LocalDate?, selectedDate: LocalDate, logs: List<FoodLog
     Surface(
         modifier = modifier
             .aspectRatio(0.74f)
+            .graphicsLayer(
+                scaleX = if (isSelected) 1.03f else 1f,
+                scaleY = if (isSelected) 1.03f else 1f,
+                rotationZ = if (logs.isNotEmpty() && !isSelected) wiggle else 0f,
+            )
             .clip(RoundedCornerShape(14.dp))
             .border(
                 width = if (isToday || isSelected) 2.dp else 1.dp,
@@ -1715,7 +1837,19 @@ private fun DayLog(
             }
         }
         items(logs, key = { it.id }) { log ->
-            Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
+            val transition = rememberInfiniteTransition(label = "log-${log.id}")
+            val float by transition.animateFloat(
+                initialValue = -1f,
+                targetValue = 2f,
+                animationSpec = infiniteRepeatable(tween(2200), RepeatMode.Reverse),
+                label = "logFloat",
+            )
+            Surface(
+                modifier = Modifier.graphicsLayer(translationY = float),
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 2.dp,
+            ) {
                 Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Image(
                         painter = rememberAsyncImagePainter(File(log.imagePath)),

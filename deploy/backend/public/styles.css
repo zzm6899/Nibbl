@@ -7,6 +7,8 @@
 
 * { box-sizing: border-box; }
 
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -14,6 +16,8 @@ body {
     radial-gradient(circle at 12% 12%, rgba(255,214,216,.68), transparent 30%),
     radial-gradient(circle at 88% 18%, rgba(216,239,241,.72), transparent 28%),
     linear-gradient(180deg, #fffaf2 0%, #fff0ec 52%, #edf5dd 100%);
+  background-size: 120% 120%;
+  animation: pageGlow 12s ease-in-out infinite alternate;
 }
 
 main {
@@ -43,6 +47,7 @@ main {
 .hero-copy {
   display: grid;
   gap: 16px;
+  animation: riseIn .72s ease both;
 }
 
 .mark {
@@ -56,6 +61,7 @@ main {
   font-size: 42px;
   font-weight: 950;
   color: #2b075f;
+  animation: bob 2.8s ease-in-out infinite;
 }
 
 .logo-mark {
@@ -82,6 +88,7 @@ main {
   bottom: 9px;
   border-radius: 999px;
   background: radial-gradient(circle at center, #fff 0 34%, #e87979 36% 100%);
+  animation: stickerPop 1.8s ease-in-out infinite alternate;
 }
 
 .cup-face {
@@ -109,6 +116,11 @@ main {
 
 .cup-face::before { left: -2px; }
 .cup-face::after { right: -2px; }
+
+.logo-mark:hover .cup-face,
+.mark:hover .cup-face {
+  animation: smileWiggle .5s ease;
+}
 
 h1, h2, p {
   margin: 0;
@@ -163,6 +175,16 @@ a.button, button {
   font-weight: 850;
   text-decoration: none;
   cursor: pointer;
+  transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+a.button:hover, button:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 14px 28px rgba(43,7,95,.18);
+}
+
+a.button:active, button:active {
+  transform: translateY(0) scale(.98);
 }
 
 a.button.secondary, button.secondary {
@@ -179,6 +201,7 @@ a.button.secondary, button.secondary {
   border-radius: 22px;
   background: rgba(255,253,248,.92);
   box-shadow: 0 18px 48px rgba(122,87,65,.14);
+  animation: popIn .42s ease both;
 }
 
 .invite-card span {
@@ -216,6 +239,7 @@ a.button.secondary, button.secondary {
   border-radius: 24px;
   background: #eaf4d8;
   box-shadow: 0 18px 40px rgba(95,118,86,.12);
+  animation: riseIn .72s ease both;
 }
 
 .install-strip p {
@@ -232,6 +256,7 @@ a.button.secondary, button.secondary {
   align-content: start;
   gap: 18px;
   border: 8px solid rgba(255,255,255,.7);
+  animation: phoneFloat 4.8s ease-in-out infinite, riseIn .78s ease both;
 }
 
 .phone-top {
@@ -281,6 +306,7 @@ a.button.secondary, button.secondary {
   top: 16px;
   background: #dcecc7;
   transform: rotate(-8deg);
+  animation: snackFloatA 3.1s ease-in-out infinite;
 }
 
 .photo-item.matcha::before {
@@ -294,6 +320,7 @@ a.button.secondary, button.secondary {
   top: 0;
   background: #ffd6d8;
   transform: rotate(5deg);
+  animation: snackFloatB 2.8s ease-in-out infinite;
 }
 
 .photo-item.berry::before {
@@ -310,6 +337,7 @@ a.button.secondary, button.secondary {
   top: 24px;
   background: #fff0b8;
   transform: rotate(8deg);
+  animation: snackFloatC 3.4s ease-in-out infinite;
 }
 
 .photo-item.toast::before {
@@ -351,12 +379,19 @@ a.button.secondary, button.secondary {
   padding: 9px;
   font-style: normal;
   font-size: 18px;
+  transition: transform .18s ease, background .18s ease;
+}
+
+.mini-grid b:hover {
+  transform: translateY(-3px) rotate(-2deg);
+  background: #fff0b8;
 }
 
 .mini-grid .today {
   background: #ffe8b8;
   border-color: #f4b14e;
   color: #2b075f;
+  animation: todayPulse 1.8s ease-in-out infinite;
 }
 
 .stats, .share-grid, .feature-grid {
@@ -375,7 +410,30 @@ a.button.secondary, button.secondary {
   background: rgba(255,253,248,.88);
   padding: 20px;
   box-shadow: 0 14px 38px rgba(122,87,65,.11);
+  animation: riseIn .58s ease both;
+  transition: transform .18s ease, box-shadow .18s ease;
 }
+
+.stat:hover, .card:hover, .panel:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 46px rgba(122,87,65,.16);
+}
+
+.stats .stat:nth-child(2),
+.feature-grid .panel:nth-child(2),
+.admin-grid .stat:nth-child(2),
+.admin-lists .panel:nth-child(2) { animation-delay: .05s; }
+
+.stats .stat:nth-child(3),
+.feature-grid .panel:nth-child(3),
+.admin-grid .stat:nth-child(3),
+.admin-lists .panel:nth-child(3) { animation-delay: .1s; }
+
+.stats .stat:nth-child(4),
+.admin-grid .stat:nth-child(4),
+.admin-lists .panel:nth-child(4) { animation-delay: .15s; }
+
+.admin-grid .stat:nth-child(n+5) { animation-delay: .2s; }
 
 .panel {
   display: grid;
@@ -419,6 +477,7 @@ a.button.secondary, button.secondary {
   object-fit: contain;
   border-radius: 16px;
   background: #f7efe8;
+  animation: softReveal .5s ease both;
 }
 
 .placeholder {
@@ -447,6 +506,7 @@ a.button.secondary, button.secondary {
 .admin-health strong {
   color: #2b075f;
   font-size: 20px;
+  animation: numberPop .5s ease both;
 }
 
 .admin-lists {
@@ -474,6 +534,13 @@ a.button.secondary, button.secondary {
   color: #5f6554;
   text-decoration: none;
   font-size: 14px;
+  animation: slideIn .34s ease both;
+  transition: transform .16s ease, background .16s ease;
+}
+
+.rank-row:hover {
+  transform: translateX(4px);
+  background: #fff0df;
 }
 
 .rank-row span {
@@ -521,6 +588,88 @@ th, td {
 
 th {
   color: #2b075f;
+}
+
+tbody tr {
+  animation: slideIn .34s ease both;
+  transition: background .16s ease;
+}
+
+tbody tr:hover {
+  background: #fff7ed;
+}
+
+@keyframes pageGlow {
+  from { background-position: 0% 0%; }
+  to { background-position: 100% 100%; }
+}
+
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(18px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes popIn {
+  0% { opacity: 0; transform: scale(.92) rotate(-1deg); }
+  72% { transform: scale(1.03) rotate(1deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+@keyframes bob {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-7px) rotate(1deg); }
+}
+
+@keyframes stickerPop {
+  from { transform: scale(.92) rotate(-8deg); }
+  to { transform: scale(1.08) rotate(5deg); }
+}
+
+@keyframes smileWiggle {
+  0%, 100% { transform: rotate(0); }
+  30% { transform: rotate(-8deg); }
+  70% { transform: rotate(8deg); }
+}
+
+@keyframes phoneFloat {
+  0%, 100% { transform: translateY(0) rotate(.4deg); }
+  50% { transform: translateY(-10px) rotate(-.5deg); }
+}
+
+@keyframes snackFloatA {
+  0%, 100% { transform: translateY(0) rotate(-8deg); }
+  50% { transform: translateY(-9px) rotate(-4deg); }
+}
+
+@keyframes snackFloatB {
+  0%, 100% { transform: translateY(0) rotate(5deg); }
+  50% { transform: translateY(7px) rotate(9deg); }
+}
+
+@keyframes snackFloatC {
+  0%, 100% { transform: translateY(0) rotate(8deg); }
+  50% { transform: translateY(-6px) rotate(4deg); }
+}
+
+@keyframes todayPulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 rgba(244,177,78,0); }
+  50% { transform: scale(1.05); box-shadow: 0 8px 18px rgba(244,177,78,.22); }
+}
+
+@keyframes softReveal {
+  from { opacity: 0; transform: scale(.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes numberPop {
+  0% { opacity: 0; transform: scale(.86); }
+  70% { transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
 }
 
 footer {
@@ -684,5 +833,16 @@ footer a {
 
   table {
     font-size: 13px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: .001ms !important;
   }
 }
