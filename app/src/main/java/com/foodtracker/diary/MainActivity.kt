@@ -106,7 +106,6 @@ import coil.compose.rememberAsyncImagePainter
 import com.foodtracker.diary.data.AppSettings
 import com.foodtracker.diary.data.AppSettingsRepository
 import com.foodtracker.diary.data.BackgroundRemover
-import com.foodtracker.diary.data.BackendDrinkReporter
 import com.foodtracker.diary.data.CafeCrewPerson
 import com.foodtracker.diary.data.CafeCrewStore
 import com.foodtracker.diary.data.CategoryStore
@@ -158,7 +157,6 @@ private fun DiaryApp() {
     val categoryStore = remember { CategoryStore(context) }
     val remover = remember { BackgroundRemover(context) }
     val locationHelper = remember { LocationHelper(context) }
-    val backendDrinkReporter = remember { BackendDrinkReporter() }
     var logs by remember { mutableStateOf(emptyList<FoodLog>()) }
     var settings by remember { mutableStateOf(AppSettings()) }
     var crew by remember { mutableStateOf(emptyList<CafeCrewPerson>()) }
@@ -209,12 +207,12 @@ private fun DiaryApp() {
     }
 
     suspend fun repeatLog(log: FoodLog) {
-        val repeated = log.copy(
-            id = UUID.randomUUID().toString(),
-            timestamp = selectedDate.atTime(LocalTime.now()).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+        repository.save(
+            log.copy(
+                id = UUID.randomUUID().toString(),
+                timestamp = selectedDate.atTime(LocalTime.now()).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+            )
         )
-        repository.save(repeated)
-        backendDrinkReporter.submit(settings.shareHost, repeated)
         refresh()
         mode = CalendarMode.Day
     }
@@ -416,22 +414,22 @@ private fun DiaryApp() {
             onDismiss = { pending = null },
             onSave = { title, category, caffeine, cafe, place, friends ->
                 scope.launch {
-                    val log = FoodLog(
-                        id = UUID.randomUUID().toString(),
-                        timestamp = System.currentTimeMillis(),
-                        imagePath = item.cutoutPath,
-                        originalImagePath = item.originalPath,
-                        title = title,
-                        category = category,
-                        caffeineMg = caffeine,
-                        cafe = cafe,
-                        locationName = place,
-                        latitude = item.location.latitude,
-                        longitude = item.location.longitude,
-                        friendNames = friends,
+                    repository.save(
+                        FoodLog(
+                            id = UUID.randomUUID().toString(),
+                            timestamp = System.currentTimeMillis(),
+                            imagePath = item.cutoutPath,
+                            originalImagePath = item.originalPath,
+                            title = title,
+                            category = category,
+                            caffeineMg = caffeine,
+                            cafe = cafe,
+                            locationName = place,
+                            latitude = item.location.latitude,
+                            longitude = item.location.longitude,
+                            friendNames = friends,
+                        )
                     )
-                    repository.save(log)
-                    backendDrinkReporter.submit(settings.shareHost, log)
                     crewStore.ensurePeopleForNames(friends)
                     selectedDate = LocalDate.now()
                     pending = null
