@@ -69,7 +69,7 @@ object BackendFriendTagChecker {
             }.getOrNull()
             if (resolved != null) return@withContext resolved
         }
-        invite?.let { ResolvedFriendTag(it.displayName, it.code) }
+        null
     }
 
     suspend fun updateOwnerProfile(shareHost: String, settings: AppSettings): Boolean = withContext(Dispatchers.IO) {

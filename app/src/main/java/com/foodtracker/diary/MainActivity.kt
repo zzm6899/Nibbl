@@ -265,7 +265,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
     suspend fun addFriendFromInviteOrTag(input: String) {
         val resolved = BackendFriendTagChecker.resolve(settings.shareHost, input)
         if (resolved == null) {
-            error = "Friend not found. Ask them to share their Nibbl friend link or username."
+            error = "Friend doesn't exist yet. Check the username or ask them to open Nibbl first."
             return
         }
         if (resolved.tag == settings.username) {
@@ -480,6 +480,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                     }
                     AppSection.Crew -> CrewScreen(
                         crew = crew,
+                        error = error,
                         onAdd = { name ->
                             scope.launch {
                                 addFriendFromInviteOrTag(name)
@@ -792,6 +793,7 @@ private fun DiaryPulse(date: LocalDate, mode: CalendarMode, logs: List<FoodLog>,
 @OptIn(ExperimentalLayoutApi::class)
 private fun CrewScreen(
     crew: List<CafeCrewPerson>,
+    error: String?,
     onAdd: (String) -> Unit,
     onToggleFavorite: (CafeCrewPerson) -> Unit,
     onPhoto: (CafeCrewPerson) -> Unit,
@@ -862,6 +864,9 @@ private fun CrewScreen(
                                 }
                             },
                         ) { Text("Add") }
+                    }
+                    error?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
