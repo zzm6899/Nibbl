@@ -474,24 +474,121 @@ footer a {
 }
 
 @media (max-width: 860px) {
+  body {
+    background:
+      linear-gradient(180deg, rgba(255,250,242,.98), rgba(255,240,236,.96) 58%, rgba(237,245,221,.98));
+  }
+
+  main {
+    width: min(100vw - 28px, 760px);
+    padding: 18px 0 24px;
+  }
+
+  .hero {
+    gap: 14px;
+  }
+
   .hero.launch {
     grid-template-columns: 1fr;
     min-height: auto;
+    gap: 16px;
+    align-content: start;
   }
 
   .phone-card {
-    min-height: 360px;
+    min-height: auto;
+    padding: 18px;
+    border-radius: 28px;
+    gap: 12px;
+  }
+
+  .photo-stack {
+    min-height: 112px;
+  }
+
+  .photo-item {
+    width: 92px;
+    height: 92px;
+    border-radius: 22px;
   }
 
   .stats, .share-grid, .admin-grid, .feature-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  h1 {
+    font-size: clamp(52px, 18vw, 92px);
+  }
+
+  p {
+    font-size: 17px;
+  }
 }
 
 @media (max-width: 560px) {
   main {
-    width: min(100vw - 24px, 1120px);
-    padding-top: 22px;
+    width: min(100vw - 20px, 1120px);
+    padding-top: 14px;
+  }
+
+  .mark {
+    width: 62px;
+    height: 62px;
+    border-radius: 18px;
+  }
+
+  .logo-mark::before {
+    inset: 11px 14px 10px;
+  }
+
+  .logo-mark::after {
+    width: 18px;
+    height: 18px;
+    right: 7px;
+    bottom: 7px;
+  }
+
+  .cup-face {
+    left: 23px;
+    top: 34px;
+    width: 16px;
+    height: 7px;
+    border-width: 2px;
+  }
+
+  .cup-face::before,
+  .cup-face::after {
+    top: -9px;
+    width: 4px;
+    height: 4px;
+  }
+
+  h1 {
+    font-size: clamp(48px, 22vw, 76px);
+  }
+
+  h2 {
+    font-size: 24px;
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  a.button, button {
+    width: 100%;
+    text-align: center;
+    padding: 13px 16px;
+  }
+
+  .invite-card,
+  .stat,
+  .card,
+  .panel,
+  .install-strip {
+    border-radius: 18px;
+    padding: 16px;
   }
 
   .stats, .share-grid, .admin-grid, .feature-grid {
@@ -505,6 +602,16 @@ footer a {
   .install-strip {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .mini-grid {
+    gap: 6px;
+  }
+
+  .mini-grid i, .mini-grid b {
+    border-radius: 10px;
+    padding: 7px;
+    font-size: 14px;
   }
 
   table {

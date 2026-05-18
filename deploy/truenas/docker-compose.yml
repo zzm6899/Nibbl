@@ -20,6 +20,8 @@ services:
       S3_FORCE_PATH_STYLE: "true"
     ports:
       - "5100:8090"
+    volumes:
+      - /mnt/mainstorage/apps/nibbl/backend-objects:/data/objects
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8090/api/health"]
       interval: 30s

@@ -8,6 +8,8 @@ import java.io.DataOutputStream
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.Instant
+import java.time.ZoneId
 
 class BackendDrinkReporter {
     suspend fun submit(shareHost: String, log: FoodLog, settings: AppSettings? = null) = withContext(Dispatchers.IO) {
@@ -55,6 +57,7 @@ class BackendDrinkReporter {
 private fun FoodLog.toBackendJson(settings: AppSettings?): JSONObject =
     JSONObject()
         .put("timestamp", timestamp)
+        .put("logDate", Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault()).toLocalDate().toString())
         .put("title", title)
         .put("category", category.id)
         .put("caffeineMg", caffeineMg ?: JSONObject.NULL)

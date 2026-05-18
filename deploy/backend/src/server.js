@@ -96,7 +96,7 @@ app.post("/api/nibbl/ingest", requireDeviceAuth, upload.fields([
     const imageObject = cutoutFile ? await putObject(cutoutFile, "cutouts") : null;
     const originalObject = originalFile ? await putObject(originalFile, "originals") : null;
     const timestamp = Number(body.timestamp || Date.now());
-    const logDate = new Date(timestamp).toISOString().slice(0, 10);
+    const logDate = body.logDate ? dateFromSlug(text(body.logDate, 32)) : new Date(timestamp).toISOString().slice(0, 10);
     const friendNames = arrayValue(body.friendNames);
 
     const result = await pool.query(
