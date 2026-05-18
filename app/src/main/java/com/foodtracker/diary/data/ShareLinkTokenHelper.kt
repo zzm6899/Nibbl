@@ -22,7 +22,7 @@ data class DayShareLink(
 )
 
 object ShareLinkTokenHelper {
-    const val DEFAULT_SHARE_HOST = "https://api.nibbl.z2hs.au"
+    const val DEFAULT_SHARE_HOST = "https://nibbl.z2hs.au"
 
     private const val TOKEN_VERSION = 1
     private val TOKEN_FLAG = Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
@@ -76,7 +76,7 @@ object ShareLinkTokenHelper {
                 if (separator < 0) return@mapNotNull null
                 val key = parameter.substring(0, separator).urlDecode()
                 val value = parameter.substring(separator + 1).urlDecode()
-                if (key == "token") value else null
+                if (key == "invite" || key == "token") value else null
             }
             ?.firstOrNull { it.isNotBlank() }
     }
@@ -117,7 +117,7 @@ object ShareLinkTokenHelper {
 
     private fun createDayUrl(date: LocalDate, shareHost: String, token: String): String {
         val base = normalizeShareHost(shareHost)
-        return "$base/day/$date?token=${token.urlEncode()}"
+        return "$base/?day=$date&invite=${token.urlEncode()}"
     }
 
     private fun checksum(bytes: ByteArray): String {

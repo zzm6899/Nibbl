@@ -11,44 +11,74 @@
         background: #fff7ee;
         color: #302a28;
       }
+
       body {
         margin: 0;
         min-height: 100vh;
         display: grid;
         place-items: center;
         background:
-          radial-gradient(circle at 20% 15%, #e7f0d5 0 20%, transparent 21%),
-          radial-gradient(circle at 85% 25%, #ffe6b8 0 18%, transparent 19%),
+          radial-gradient(circle at 18% 18%, #dcecc7 0 18%, transparent 19%),
+          radial-gradient(circle at 86% 24%, #ffe6b8 0 16%, transparent 17%),
+          radial-gradient(circle at 72% 82%, #d8eff1 0 18%, transparent 19%),
           linear-gradient(180deg, #fff7ee, #ffdfdc);
       }
+
       main {
         width: min(680px, calc(100vw - 32px));
         border-radius: 28px;
-        background: rgba(255, 253, 248, 0.88);
+        background: rgba(255, 253, 248, 0.9);
         padding: 32px;
         box-shadow: 0 22px 70px rgba(122, 87, 65, 0.18);
       }
+
+      .mark {
+        width: 88px;
+        height: 88px;
+        border-radius: 28px;
+        display: grid;
+        place-items: center;
+        background: #dcecc7;
+        box-shadow: inset -10px -10px 0 rgba(255, 255, 255, 0.45);
+        font-size: 46px;
+      }
+
       h1 {
-        margin: 0 0 8px;
+        margin: 20px 0 8px;
         font-size: clamp(48px, 10vw, 86px);
         line-height: 0.95;
         color: #2b075f;
       }
+
       p {
+        margin: 0;
         font-size: 18px;
         line-height: 1.6;
-        color: #6f9a63;
+        color: #5f7656;
       }
-      a {
-        color: #2b075f;
+
+      .invite {
+        margin-top: 22px;
+        padding: 16px;
+        border-radius: 18px;
+        background: #fff0b8;
+        color: #4a3b12;
         font-weight: 800;
       }
     </style>
   </head>
   <body>
     <main>
+      <div class="mark" aria-hidden="true">N</div>
       <h1>Nibbl</h1>
-      <p>A cute self-hosted food and drink diary. Backend admin lives at <a href="https://api.nibbl.z2hs.au/_/">api.nibbl.z2hs.au/_/</a>.</p>
+      <p>A cute food and drink diary for saving cafe days, drink photos, and little bites with friends.</p>
+      <p id="invite" class="invite" hidden>You have a Nibbl day invite. Open this link on your phone after installing the app.</p>
     </main>
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("invite")) {
+        document.getElementById("invite").hidden = false;
+      }
+    </script>
   </body>
 </html>

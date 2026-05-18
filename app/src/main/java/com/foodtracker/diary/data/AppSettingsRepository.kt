@@ -73,6 +73,7 @@ private fun AppSettings.normalized(): AppSettings =
     copy(
         displayName = displayName.trim().ifBlank { AppSettings.DEFAULT_DISPLAY_NAME }.take(48),
         shareHost = ShareLinkTokenHelper.normalizeShareHost(shareHost)
+            .replace("https://api.nibbl.z2hs.au", ShareLinkTokenHelper.DEFAULT_SHARE_HOST)
             .replace("https://sipday.local", ShareLinkTokenHelper.DEFAULT_SHARE_HOST)
             .replace("https://foodtracker.local", ShareLinkTokenHelper.DEFAULT_SHARE_HOST),
     )

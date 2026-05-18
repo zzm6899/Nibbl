@@ -579,12 +579,11 @@ private fun SettingsScreen(
     onShareDay: () -> Unit,
 ) {
     var displayName by remember(settings.displayName) { mutableStateOf(settings.displayName) }
-    var shareHost by remember(settings.shareHost) { mutableStateOf(settings.shareHost) }
     var categoryName by remember { mutableStateOf("") }
     LazyColumn(contentPadding = PaddingValues(bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-            Text("Diary defaults, sharing, and self-host links.", color = MaterialTheme.colorScheme.secondary)
+            Text("Diary defaults, friends, and sharing.", color = MaterialTheme.colorScheme.secondary)
         }
         item {
             Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
@@ -600,10 +599,9 @@ private fun SettingsScreen(
                         )
                     }
                     OutlinedTextField(displayName, { displayName = it.take(48) }, label = { Text("Your display name") }, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(shareHost, { shareHost = it.take(120) }, label = { Text("Share host / self-host URL") }, modifier = Modifier.fillMaxWidth())
                     Button(
                         onClick = {
-                            onSettings(settings.copy(displayName = displayName, shareHost = shareHost))
+                            onSettings(settings.copy(displayName = displayName))
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Save settings") }
@@ -613,12 +611,12 @@ private fun SettingsScreen(
         item {
             Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.primaryContainer, tonalElevation = 1.dp) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Invite links", fontWeight = FontWeight.Black)
-                    Text("Creates a day invite for your self-hosted Nibbl API. Use api.nibbl.z2hs.au for sync and sharing.", color = MaterialTheme.colorScheme.primary)
+                    Text("Share a day", fontWeight = FontWeight.Black)
+                    Text("Create a simple invite link for friends to open your ${selectedDate.format(DateTimeFormatter.ofPattern("d MMM"))} diary.", color = MaterialTheme.colorScheme.primary)
                     Button(onClick = onShareDay) {
                         Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Create link for ${selectedDate.format(DateTimeFormatter.ofPattern("d MMM"))}")
+                        Text("Create invite link")
                     }
                 }
             }
@@ -1490,7 +1488,7 @@ private fun ShareLinkDialog(url: String, onDismiss: () -> Unit) {
         title = { Text("Day invite link") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Use this with your self-hosted Nibbl API, or keep it as a portable day token for now.")
+                Text("Send this link to someone you want to share the day with.")
                 Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer) {
                     Text(url, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
                 }
