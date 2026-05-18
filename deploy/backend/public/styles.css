@@ -57,6 +57,58 @@ main {
   color: #2b075f;
 }
 
+.logo-mark {
+  position: relative;
+  overflow: hidden;
+  background: #ffd6d8;
+}
+
+.logo-mark::before {
+  content: "";
+  position: absolute;
+  inset: 14px 18px 12px;
+  border-radius: 10px 10px 14px 14px;
+  background: linear-gradient(#fffdf8 0 26%, #6f9a63 26% 42%, #9fcf8f 42%);
+  box-shadow: inset 0 -5px 0 rgba(63,95,53,.12);
+}
+
+.logo-mark::after {
+  content: "";
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  right: 9px;
+  bottom: 9px;
+  border-radius: 999px;
+  background: radial-gradient(circle at center, #fff 0 34%, #e87979 36% 100%);
+}
+
+.cup-face {
+  position: absolute;
+  z-index: 1;
+  left: 31px;
+  top: 45px;
+  width: 20px;
+  height: 8px;
+  border: 3px solid #3f5f35;
+  border-top: 0;
+  border-radius: 0 0 999px 999px;
+}
+
+.cup-face::before,
+.cup-face::after {
+  content: "";
+  position: absolute;
+  top: -11px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #3f5f35;
+}
+
+.cup-face::before { left: -2px; }
+.cup-face::after { right: -2px; }
+
 h1, h2, p {
   margin: 0;
 }
@@ -113,6 +165,22 @@ a.button.secondary {
   background: #fff0b8;
   color: #4a3b12;
   font-weight: 850;
+}
+
+.install-strip {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px;
+  border-radius: 24px;
+  background: #eaf4d8;
+  box-shadow: 0 18px 40px rgba(95,118,86,.12);
+}
+
+.install-strip p {
+  font-size: 17px;
 }
 
 .phone-card {
@@ -312,6 +380,11 @@ footer a {
 
   .phone-card {
     display: none;
+  }
+
+  .install-strip {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   table {

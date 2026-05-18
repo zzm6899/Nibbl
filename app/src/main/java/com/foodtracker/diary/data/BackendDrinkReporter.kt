@@ -14,33 +14,40 @@ class BackendDrinkReporter {
         val apiToken = settings?.apiToken.orEmpty()
         if (apiToken.isBlank()) return@withContext
 
-        runCatching {
-            val endpoint = "${ShareLinkTokenHelper.apiHostFor(shareHost)}/api/nibbl/ingest"
-            val boundary = "NibblBoundary${System.currentTimeMillis()}"
-            val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = 8_000
-                readTimeout = 20_000
-                doOutput = true
-                setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
-                setRequestProperty("Authorization", "Bearer $apiToken")
-            }
-
-            DataOutputStream(connection.outputStream).use { output ->
-                output.writeMultipartField(boundary, "payload", log.toBackendJson(settings).toString())
-                File(log.imagePath).takeIf { it.isFile }?.let { output.writeMultipartFile(boundary, "cutout", it) }
-                File(log.originalImagePath).takeIf { it.isFile && it.absolutePath != log.imagePath }?.let {
-                    output.writeMultipartFile(boundary, "original", it)
+        for (host in ShareLinkTokenHelper.apiHostsFor(shareHost)) {
+            val sent = runCatching {
+                val endpoint = "$host/api/nibbl/ingest"
+                val boundary = "NibblBoundary${System.currentTimeMillis()}"
+                val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 8_000
+                    readTimeout = 20_000
+                    doOutput = true
+                    setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+                    setRequestProperty("Authorization", "Bearer $apiToken")
                 }
-                output.writeBytes("--$boundary--\r\n")
-            }
-            try {
-                connection.inputStream?.close()
-            } catch (_: Exception) {
-                connection.errorStream?.close()
-            } finally {
-                connection.disconnect()
-            }
+
+                try {
+                    DataOutputStream(connection.outputStream).use { output ->
+                        output.writeMultipartField(boundary, "payload", log.toBackendJson(settings).toString())
+                        File(log.imagePath).takeIf { it.isFile }?.let { output.writeMultipartFile(boundary, "cutout", it) }
+                        File(log.originalImagePath).takeIf { it.isFile && it.absolutePath != log.imagePath }?.let {
+                            output.writeMultipartFile(boundary, "original", it)
+                        }
+                        output.writeBytes("--$boundary--\r\n")
+                    }
+                    val code = connection.responseCode
+                    try {
+                        connection.inputStream?.close()
+                    } catch (_: Exception) {
+                        connection.errorStream?.close()
+                    }
+                    code in 200..299
+                } finally {
+                    connection.disconnect()
+                }
+            }.getOrDefault(false)
+            if (sent) return@withContext
         }
     }
 }

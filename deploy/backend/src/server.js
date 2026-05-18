@@ -540,7 +540,7 @@ function renderSharePage(day, date, share = null) {
     </article>
   `).join("");
   const owner = share?.owner_name || share?.owner_tag || "";
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nibbl ${escapeHtml(date)}</title><link rel="stylesheet" href="/styles.css"></head><body><main><section class="hero compact"><div class="mark">N</div><h1>${escapeHtml(date)}</h1><p>${owner ? `${escapeHtml(owner)} shared this day. ` : ""}${day.logs.length ? `${day.logs.length} saved food and drink moments.` : "No public logs have synced for this day yet."}</p></section><section class="share-grid">${cards}</section></main></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nibbl ${escapeHtml(date)}</title><link rel="stylesheet" href="/styles.css"></head><body><main><section class="hero compact"><div class="mark logo-mark"><span class="cup-face"></span></div><h1>${escapeHtml(date)}</h1><p>${owner ? `${escapeHtml(owner)} shared this day. ` : ""}${day.logs.length ? `${day.logs.length} saved food and drink moments.` : "No public logs have synced for this day yet."}</p></section><section class="share-grid">${cards}</section><section id="install" class="install-strip"><div><h2>Want to add your own photos?</h2><p>Install Nibbl to save food and drink photos, then share your profile or day links with friends.</p></div><a class="button" href="/">Install now</a></section></main></body></html>`;
 }
 
 async function requireDeviceAuth(req, res, next) {

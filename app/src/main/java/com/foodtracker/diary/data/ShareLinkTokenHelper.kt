@@ -67,6 +67,12 @@ object ShareLinkTokenHelper {
         return "${normalizeShareHost(settings.shareHost)}/?friend=${code.urlEncode()}&name=${name.urlEncode()}"
     }
 
+    fun createProfileInviteUrl(settings: AppSettings): String {
+        val code = settings.username.ifBlank { settings.displayName.toFriendInviteCode() }
+        val name = settings.displayName.trim().take(48)
+        return "${normalizeShareHost(settings.shareHost)}/?friend=${code.urlEncode()}&name=${name.urlEncode()}"
+    }
+
     fun parseCrewInviteUrl(url: String): CrewInviteToken? {
         val uri = runCatching { URI(url.trim()) }.getOrNull() ?: return null
         val values = uri.rawQuery
@@ -195,6 +201,12 @@ object ShareLinkTokenHelper {
     fun apiHostFor(shareHost: String): String {
         val normalized = normalizeShareHost(shareHost)
         return if (normalized == DEFAULT_SHARE_HOST) DEFAULT_API_HOST else normalized
+    }
+
+    fun apiHostsFor(shareHost: String): List<String> {
+        val webHost = normalizeShareHost(shareHost)
+        val apiHost = apiHostFor(shareHost)
+        return listOf(apiHost, webHost).distinct()
     }
 
     private fun createDayUrl(date: LocalDate, shareHost: String, token: String): String {

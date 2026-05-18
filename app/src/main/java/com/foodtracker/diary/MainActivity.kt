@@ -527,6 +527,9 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                         onShareDay = {
                             scope.launch { shareLink = createPublicDayShare(selectedDate) }
                         },
+                        onShareProfile = {
+                            shareLink = ShareLinkTokenHelper.createProfileInviteUrl(settings)
+                        },
                     )
                 }
             }
@@ -941,6 +944,7 @@ private fun SettingsScreen(
     onAddCategory: (String) -> Unit,
     onDeleteCategory: (DrinkCategory) -> Unit,
     onShareDay: () -> Unit,
+    onShareProfile: () -> Unit,
 ) {
     var displayName by remember(settings.displayName) { mutableStateOf(settings.displayName) }
     var username by remember(settings.username) { mutableStateOf(settings.username) }
@@ -1020,6 +1024,15 @@ private fun SettingsScreen(
                         enabled = !profileSaving,
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(if (profileSaving) "Checking" else "Save profile") }
+                    Button(
+                        onClick = onShareProfile,
+                        enabled = username.toFriendInviteCode().length >= 3,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Share my profile")
+                    }
                 }
             }
         }

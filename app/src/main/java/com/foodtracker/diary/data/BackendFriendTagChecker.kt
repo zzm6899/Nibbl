@@ -17,9 +17,10 @@ object BackendFriendTagChecker {
         val cleanTag = tag.toFriendInviteCode()
         if (cleanTag.length < 3) return@withContext false
 
-        runCatching {
+        for (host in ShareLinkTokenHelper.apiHostsFor(shareHost)) {
+            val available = runCatching {
             val encoded = URLEncoder.encode(cleanTag, Charsets.UTF_8.name())
-            val endpoint = "${ShareLinkTokenHelper.apiHostFor(shareHost)}/api/nibbl/friends/available?tag=$encoded"
+            val endpoint = "$host/api/nibbl/friends/available?tag=$encoded"
             val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 5_000
@@ -28,7 +29,10 @@ object BackendFriendTagChecker {
             val body = connection.inputStream.bufferedReader().use { it.readText() }
             connection.disconnect()
             JSONObject(body).optBoolean("available", true)
-        }.getOrDefault(false)
+            }.getOrNull()
+            if (available != null) return@withContext available
+        }
+        false
     }
 
     suspend fun resolve(shareHost: String, tagOrUrl: String): ResolvedFriendTag? = withContext(Dispatchers.IO) {
@@ -39,9 +43,10 @@ object BackendFriendTagChecker {
         val cleanTag = tagOrUrl.toFriendInviteCode()
         if (cleanTag.length < 3) return@withContext null
 
-        runCatching {
+        for (host in ShareLinkTokenHelper.apiHostsFor(shareHost)) {
+            val resolved = runCatching {
             val encoded = URLEncoder.encode(cleanTag, Charsets.UTF_8.name())
-            val endpoint = "${ShareLinkTokenHelper.apiHostFor(shareHost)}/api/nibbl/friends/resolve?tag=$encoded"
+            val endpoint = "$host/api/nibbl/friends/resolve?tag=$encoded"
             val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 5_000
@@ -59,14 +64,18 @@ object BackendFriendTagChecker {
                 displayName = json.optString("displayName", cleanTag).trim().ifBlank { cleanTag },
                 tag = json.optString("tag", cleanTag).toFriendInviteCode(),
             )
-        }.getOrNull()
+            }.getOrNull()
+            if (resolved != null) return@withContext resolved
+        }
+        null
     }
 
     suspend fun updateOwnerProfile(shareHost: String, settings: AppSettings): Boolean = withContext(Dispatchers.IO) {
         if (settings.apiToken.isBlank() || settings.ownerId.isBlank()) return@withContext false
 
-        runCatching {
-            val endpoint = "${ShareLinkTokenHelper.apiHostFor(shareHost)}/api/nibbl/profile"
+        for (host in ShareLinkTokenHelper.apiHostsFor(shareHost)) {
+            val updated = runCatching {
+            val endpoint = "$host/api/nibbl/profile"
             val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 connectTimeout = 8_000
@@ -92,7 +101,10 @@ object BackendFriendTagChecker {
                 connection.disconnect()
             }
             code in 200..299
-        }.getOrDefault(false)
+            }.getOrDefault(false)
+            if (updated) return@withContext true
+        }
+        false
     }
 }
 

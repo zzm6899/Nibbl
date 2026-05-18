@@ -10,7 +10,7 @@
     <main>
       <section class="hero launch">
         <div class="hero-copy">
-          <div class="mark" aria-hidden="true">N</div>
+          <div class="mark logo-mark" aria-hidden="true"><span class="cup-face"></span></div>
           <h1>Nibbl</h1>
           <p>A cute food and drink diary for saving cafe photos, background-removed cutouts, caffeine notes, and shared days with friends.</p>
           <div class="actions">
@@ -63,6 +63,14 @@
         <p><strong>Friend links</strong> add a real Nibbl friend tag to the app. <strong>Public day links</strong> open a web page for one calendar day. They are different on purpose.</p>
       </section>
 
+      <section id="install" class="install-strip">
+        <div>
+          <h2>Want to add your own photos?</h2>
+          <p>Install Nibbl, save food and drink photos, then share your profile or a public day link with friends.</p>
+        </div>
+        <a class="button" href="/">Install now</a>
+      </section>
+
       <footer>
         <span>Nibbl self-hosted at nibbl.z2hs.au</span>
         <a href="/admin.html">Admin</a>
@@ -74,7 +82,7 @@
       const invite = document.getElementById("invite");
       if (params.has("friend") || params.has("crew")) {
         const name = params.get("name") || "this friend";
-        invite.textContent = `Friend link for ${name}. Open it on your phone to add this Nibbl friend.`;
+        invite.textContent = `Friend profile for ${name}. Install Nibbl, then open this link on your phone to add them.`;
         invite.hidden = false;
       } else if (path.startsWith("/i/") || params.has("i") || params.has("s") || params.has("invite")) {
         invite.textContent = "Public day link detected. If this page did not open the shared diary, ask the sender to create a fresh link.";
