@@ -421,7 +421,13 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
             ) {
                 when (section) {
                     AppSection.Diary -> {
-                        Header(selectedDate, mode, onPrevious = { selectedDate = selectedDate.shift(mode, -1) }, onNext = { selectedDate = selectedDate.shift(mode, 1) })
+                        Header(
+                            date = selectedDate,
+                            mode = mode,
+                            displayName = settings.displayName,
+                            onPrevious = { selectedDate = selectedDate.shift(mode, -1) },
+                            onNext = { selectedDate = selectedDate.shift(mode, 1) },
+                        )
                         Spacer(Modifier.height(10.dp))
                         ModePicker(mode = mode, onMode = { mode = it })
                         Spacer(Modifier.height(8.dp))
@@ -684,7 +690,8 @@ private fun OnboardingRow(number: String, text: String) {
 }
 
 @Composable
-private fun Header(date: LocalDate, mode: CalendarMode, onPrevious: () -> Unit, onNext: () -> Unit) {
+private fun Header(date: LocalDate, mode: CalendarMode, displayName: String, onPrevious: () -> Unit, onNext: () -> Unit) {
+    val ownerName = displayName.trim().ifBlank { AppSettings.DEFAULT_DISPLAY_NAME }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(26.dp),
@@ -707,7 +714,14 @@ private fun Header(date: LocalDate, mode: CalendarMode, onPrevious: () -> Unit, 
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(date.headerLabel(mode), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("Nibbl diary", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "${ownerName}'s diary",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.secondary,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             IconButton(onClick = onPrevious) { Icon(Icons.Rounded.ChevronLeft, contentDescription = "Previous") }
             IconButton(onClick = onNext) { Icon(Icons.Rounded.ChevronRight, contentDescription = "Next") }
