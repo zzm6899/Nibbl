@@ -65,25 +65,25 @@
           fetchJson("/api/admin/stats"),
           fetchJson("/api/admin/logs"),
         ]);
-        entries.textContent = stats.entries ?? 0;
-        entriesToday.textContent = stats.entriesToday ?? 0;
-        entriesWeek.textContent = stats.entriesWeek ?? 0;
-        devices.textContent = stats.devices ?? 0;
-        newDevicesWeek.textContent = stats.newDevicesWeek ?? 0;
-        activeLoggers.textContent = stats.activeLoggers ?? 0;
-        shares.textContent = stats.shares ?? 0;
-        sharesWeek.textContent = stats.sharesWeek ?? 0;
-        shareVisits.textContent = stats.shareVisits ?? 0;
-        imageEntries.textContent = stats.imageEntries ?? 0;
-        avatarDevices.textContent = stats.avatarDevices ?? 0;
-        cafes.textContent = stats.cafes ?? 0;
-        friends.textContent = stats.friends ?? 0;
-        categories.textContent = stats.categories ?? 0;
-        caffeineTotal.textContent = stats.caffeineTotal ?? 0;
-        database.textContent = stats.health?.database || "-";
-        objects.textContent = stats.health?.objectStorage || "-";
-        objectMode.textContent = stats.health?.objectMode || "-";
-        lastUpload.textContent = stats.lastUploadAt ? new Date(stats.lastUploadAt).toLocaleString() : "None yet";
+        setText("entries", stats.entries ?? 0);
+        setText("entriesToday", stats.entriesToday ?? 0);
+        setText("entriesWeek", stats.entriesWeek ?? 0);
+        setText("devices", stats.devices ?? 0);
+        setText("newDevicesWeek", stats.newDevicesWeek ?? 0);
+        setText("activeLoggers", stats.activeLoggers ?? 0);
+        setText("shares", stats.shares ?? 0);
+        setText("sharesWeek", stats.sharesWeek ?? 0);
+        setText("shareVisits", stats.shareVisits ?? 0);
+        setText("imageEntries", stats.imageEntries ?? 0);
+        setText("avatarDevices", stats.avatarDevices ?? 0);
+        setText("cafes", stats.cafes ?? 0);
+        setText("friends", stats.friends ?? 0);
+        setText("categories", stats.categories ?? 0);
+        setText("caffeineTotal", stats.caffeineTotal ?? 0);
+        setText("database", stats.health?.database || "-");
+        setText("objects", stats.health?.objectStorage || "-");
+        setText("objectMode", stats.health?.objectMode || "-");
+        setText("lastUpload", stats.lastUploadAt ? formatSydneyDateTime(stats.lastUploadAt) : "None yet");
         renderRankList("recentDays", (stats.recentDays || []).map((item) => ({ label: item.date, total: item.total })));
         renderRankList("topCategories", stats.topCategories || []);
         renderRankList("topCafes", stats.topCafes || []);
@@ -92,8 +92,8 @@
         renderShares(stats.recentShares || []);
         document.getElementById("logs").innerHTML = (Array.isArray(logs) ? logs : []).map((log) => `
           <tr>
-            <td>${new Date(log.timestamp).toLocaleString()}</td>
-            <td>${escapeHtml(log.ownerName || log.ownerTag || "Unknown")}</td>
+            <td>${formatSydneyDateTime(log.timestamp)}</td>
+            <td>${escapeHtml(publicOwner(log))}</td>
             <td>${escapeHtml(log.title || "Food + drink")}</td>
             <td>${escapeHtml(log.cafe || log.locationName || "")}</td>
             <td>${escapeHtml(log.category || "")}</td>
@@ -117,13 +117,37 @@
         `).join("") : `<div class="empty-row">No data yet</div>`;
       }
 
+      function setText(id, value) {
+        document.getElementById(id).textContent = value;
+      }
+
       function renderShares(rows) {
         document.getElementById("recentShares").innerHTML = rows.length ? rows.map((row) => `
           <a class="rank-row" href="${escapeHtml(row.url)}">
-            <span>${escapeHtml(row.ownerName || row.ownerTag || "Unknown")} · ${escapeHtml(row.date || "")}</span>
+            <span>${escapeHtml(publicOwner(row))} · ${escapeHtml(row.date || "")} · ${escapeHtml(formatSydneyTime(row.createdAt))}</span>
             <strong>Open</strong>
           </a>
         `).join("") : `<div class="empty-row">No shares yet</div>`;
+      }
+
+      function publicOwner(row) {
+        return row.ownerTag ? `@${row.ownerTag}` : row.ownerName || "Unknown";
+      }
+
+      function formatSydneyDateTime(value) {
+        return new Intl.DateTimeFormat("en-AU", {
+          timeZone: "Australia/Sydney",
+          dateStyle: "medium",
+          timeStyle: "short",
+        }).format(new Date(value));
+      }
+
+      function formatSydneyTime(value) {
+        return new Intl.DateTimeFormat("en-AU", {
+          timeZone: "Australia/Sydney",
+          hour: "numeric",
+          minute: "2-digit",
+        }).format(new Date(value));
       }
 
       function escapeHtml(value) {
