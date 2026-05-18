@@ -14,13 +14,25 @@ This stack runs PocketBase on host port `5100`. Your existing Caddy routes both 
    - `/mnt/mainstorage/apps/nibbl/pb_data`
    - `/mnt/mainstorage/apps/nibbl/pb_public`
 2. Put the files in `deploy/truenas` into `/mnt/mainstorage/apps/nibbl`.
-3. Point DNS:
+3. Create a local `.env` beside `docker-compose.yml` with a new ingest key:
+
+```env
+NIBBL_INGEST_KEY=replace-with-a-long-random-value
+```
+
+Build the Android APK with the same value:
+
+```powershell
+.\gradlew.bat assembleDebug -PNIBBL_INGEST_KEY="your-long-random-value"
+```
+
+4. Point DNS:
    - `nibbl.z2hs.au` -> your TrueNAS IP/public proxy
    - `api.nibbl.z2hs.au` -> your TrueNAS IP/public proxy
-4. In TrueNAS Apps, create a custom app from `docker-compose.yml`.
-5. Open the admin UI:
+5. In TrueNAS Apps, create a custom app from `docker-compose.yml`.
+6. Open the admin UI:
    - `https://api.nibbl.z2hs.au/_/`
-6. Health check:
+7. Health check:
    - `https://api.nibbl.z2hs.au/api/health`
 
 ## Admin Setup

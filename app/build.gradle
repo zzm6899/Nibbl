@@ -14,10 +14,13 @@ android {
         targetSdk 35
         versionCode 1
         versionName '1.0'
+        def nibblIngestKey = providers.gradleProperty("NIBBL_INGEST_KEY").orElse("").get()
+        buildConfigField "String", "NIBBL_INGEST_KEY", "\"${nibblIngestKey.replace("\\", "\\\\").replace("\"", "\\\"")}\""
     }
 
     buildFeatures {
         compose true
+        buildConfig true
     }
 
     compileOptions {

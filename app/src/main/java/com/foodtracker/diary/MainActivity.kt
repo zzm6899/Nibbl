@@ -1,6 +1,10 @@
 package com.foodtracker.diary
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -106,6 +110,7 @@ import coil.compose.rememberAsyncImagePainter
 import com.foodtracker.diary.data.AppSettings
 import com.foodtracker.diary.data.AppSettingsRepository
 import com.foodtracker.diary.data.BackgroundRemover
+import com.foodtracker.diary.data.BackendDrinkReporter
 import com.foodtracker.diary.data.CafeCrewPerson
 import com.foodtracker.diary.data.CafeCrewStore
 import com.foodtracker.diary.data.CategoryStore
@@ -157,6 +162,7 @@ private fun DiaryApp() {
     val categoryStore = remember { CategoryStore(context) }
     val remover = remember { BackgroundRemover(context) }
     val locationHelper = remember { LocationHelper(context) }
+    val backendDrinkReporter = remember { BackendDrinkReporter() }
     var logs by remember { mutableStateOf(emptyList<FoodLog>()) }
     var settings by remember { mutableStateOf(AppSettings()) }
     var crew by remember { mutableStateOf(emptyList<CafeCrewPerson>()) }
@@ -207,12 +213,12 @@ private fun DiaryApp() {
     }
 
     suspend fun repeatLog(log: FoodLog) {
-        repository.save(
-            log.copy(
-                id = UUID.randomUUID().toString(),
-                timestamp = selectedDate.atTime(LocalTime.now()).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-            )
+        val repeated = log.copy(
+            id = UUID.randomUUID().toString(),
+            timestamp = selectedDate.atTime(LocalTime.now()).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
         )
+        repository.save(repeated)
+        backendDrinkReporter.submit(settings.shareHost, repeated)
         refresh()
         mode = CalendarMode.Day
     }
@@ -286,45 +292,24 @@ private fun DiaryApp() {
                 when (section) {
                     AppSection.Diary -> {
                         Header(selectedDate, mode, onPrevious = { selectedDate = selectedDate.shift(mode, -1) }, onNext = { selectedDate = selectedDate.shift(mode, 1) })
-                        Spacer(Modifier.height(12.dp))
-                        FriendRail(
-                            friends = crew.map { it.displayName }.ifEmpty { logs.flatMap { it.friendNames }.distinct() },
-                            selectedFriend = selectedFriend,
-                            onFriend = { selectedFriend = it },
-                        )
+                        Spacer(Modifier.height(10.dp))
+                        ModePicker(mode = mode, onMode = { mode = it })
                         Spacer(Modifier.height(8.dp))
-                        CategoryRail(categories = categories, selectedCategory = selectedCategory, onCategory = { selectedCategory = it })
-                        ActiveFilters(
-                            selectedFriend = selectedFriend,
-                            selectedCategory = selectedCategory,
-                            onClearFriend = { selectedFriend = null },
-                            onClearCategory = { selectedCategory = null },
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                            CalendarMode.entries.forEachIndexed { index, calendarMode ->
-                                SegmentedButton(
-                                    selected = mode == calendarMode,
-                                    onClick = { mode = calendarMode },
-                                    shape = SegmentedButtonDefaults.itemShape(index, CalendarMode.entries.size),
-                                ) {
-                                    Text(calendarMode.name)
-                                }
-                            }
+                        DiaryPulse(selectedDate, mode, filteredLogs, repository)
+                        if (selectedFriend != null || selectedCategory != null) {
+                            Spacer(Modifier.height(8.dp))
+                            ActiveFilters(
+                                selectedFriend = selectedFriend,
+                                selectedCategory = selectedCategory,
+                                onClearFriend = { selectedFriend = null },
+                                onClearCategory = { selectedCategory = null },
+                            )
                         }
                         Spacer(Modifier.height(10.dp))
-                        AddLogBar(
-                            processing = processing,
-                            onGallery = { galleryLauncher.launch("image/*") },
-                            onCamera = { permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA)) },
-                        )
                         error?.let {
-                            Spacer(Modifier.height(10.dp))
                             Text(it, color = MaterialTheme.colorScheme.secondary)
+                            Spacer(Modifier.height(8.dp))
                         }
-                        Spacer(Modifier.height(16.dp))
-                        SummaryCard(selectedDate, mode, filteredLogs, repository)
-                        Spacer(Modifier.height(12.dp))
                         Box(Modifier.weight(1f)) {
                             when (mode) {
                                 CalendarMode.Month -> MonthCalendar(
@@ -355,6 +340,12 @@ private fun DiaryApp() {
                                 )
                             }
                         }
+                        Spacer(Modifier.height(10.dp))
+                        AddLogBar(
+                            processing = processing,
+                            onGallery = { galleryLauncher.launch("image/*") },
+                            onCamera = { permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA)) },
+                        )
                     }
                     AppSection.Crew -> CrewScreen(
                         crew = crew,
@@ -414,22 +405,22 @@ private fun DiaryApp() {
             onDismiss = { pending = null },
             onSave = { title, category, caffeine, cafe, place, friends ->
                 scope.launch {
-                    repository.save(
-                        FoodLog(
-                            id = UUID.randomUUID().toString(),
-                            timestamp = System.currentTimeMillis(),
-                            imagePath = item.cutoutPath,
-                            originalImagePath = item.originalPath,
-                            title = title,
-                            category = category,
-                            caffeineMg = caffeine,
-                            cafe = cafe,
-                            locationName = place,
-                            latitude = item.location.latitude,
-                            longitude = item.location.longitude,
-                            friendNames = friends,
-                        )
+                    val log = FoodLog(
+                        id = UUID.randomUUID().toString(),
+                        timestamp = System.currentTimeMillis(),
+                        imagePath = item.cutoutPath,
+                        originalImagePath = item.originalPath,
+                        title = title,
+                        category = category,
+                        caffeineMg = caffeine,
+                        cafe = cafe,
+                        locationName = place,
+                        latitude = item.location.latitude,
+                        longitude = item.location.longitude,
+                        friendNames = friends,
                     )
+                    repository.save(log)
+                    backendDrinkReporter.submit(settings.shareHost, log)
                     crewStore.ensurePeopleForNames(friends)
                     selectedDate = LocalDate.now()
                     pending = null
@@ -492,38 +483,104 @@ private fun DiaryApp() {
 private fun Header(date: LocalDate, mode: CalendarMode, onPrevious: () -> Unit, onNext: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.primaryContainer,
-        tonalElevation = 2.dp,
+        shape = RoundedCornerShape(26.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        tonalElevation = 1.dp,
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.primaryContainer,
-                            MaterialTheme.colorScheme.tertiaryContainer,
-                        )
-                    )
-                )
-                .padding(14.dp),
+                .padding(horizontal = 14.dp, vertical = 12.dp),
         ) {
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface) {
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)) {
                 Icon(
                     Icons.Rounded.CalendarMonth,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(10.dp),
+                    modifier = Modifier.padding(9.dp),
                 )
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("Nibbl", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-                Text(date.headerLabel(mode), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                Text(date.headerLabel(mode), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("Nibbl diary", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.SemiBold)
             }
             IconButton(onClick = onPrevious) { Icon(Icons.Rounded.ChevronLeft, contentDescription = "Previous") }
             IconButton(onClick = onNext) { Icon(Icons.Rounded.ChevronRight, contentDescription = "Next") }
+        }
+    }
+}
+
+@Composable
+private fun ModePicker(mode: CalendarMode, onMode: (CalendarMode) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(999.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+            tonalElevation = 1.dp,
+        ) {
+            Row(
+                modifier = Modifier.padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                CalendarMode.entries.forEach { calendarMode ->
+                    val selected = mode == calendarMode
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                        modifier = Modifier.clickable { onMode(calendarMode) },
+                    ) {
+                        Text(
+                            calendarMode.name,
+                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+                            fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiaryPulse(date: LocalDate, mode: CalendarMode, logs: List<FoodLog>, repository: FoodLogRepository) {
+    val scopedLogs = when (mode) {
+        CalendarMode.Month -> logs.filter { it.loggedDate() in YearMonth.from(date).atDay(1)..YearMonth.from(date).atEndOfMonth() }
+        CalendarMode.Week -> {
+            val start = date.weekStart(false)
+            val end = start.plusDays(6)
+            logs.filter { it.loggedDate() in start..end }
+        }
+        CalendarMode.Day -> repository.logsForDate(logs, date)
+    }
+    val cafes = scopedLogs.map { it.cafe.trim() }.filter { it.isNotBlank() }.distinct().size
+    val friends = scopedLogs.flatMap { it.friendNames }.distinct().size
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(18.dp))
+            Text(
+                "${scopedLogs.size} saved",
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text("•", color = MaterialTheme.colorScheme.secondary)
+            Text("$cafes cafes", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.SemiBold)
+            Text("•", color = MaterialTheme.colorScheme.secondary)
+            Text("$friends friends", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -702,38 +759,38 @@ private fun SettingsScreen(
 private fun AddLogBar(processing: Boolean, onGallery: () -> Unit, onCamera: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
         tonalElevation = 1.dp,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                "Add log",
-                fontWeight = FontWeight.Black,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f)) {
+                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(9.dp))
+            }
+            Column(Modifier.weight(1f)) {
+                Text("Add something", fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("Photo or camera", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+            }
             Button(
                 onClick = onGallery,
                 enabled = !processing,
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
             ) {
-                Icon(Icons.Rounded.PhotoLibrary, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Rounded.PhotoLibrary, contentDescription = "Choose from album", modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("Album")
             }
             Button(
                 onClick = onCamera,
                 enabled = !processing,
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
             ) {
-                Icon(Icons.Rounded.AddAPhoto, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Rounded.AddAPhoto, contentDescription = "Take photo", modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("Camera")
             }
@@ -1030,7 +1087,7 @@ private fun ProcessingOverlay(originalPath: String?) {
                 }
                 Text("Peeling off the background", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
                 Text(
-                    "Google ML Kit is finding the drink, then the app saves a transparent cutout.",
+                    "Nibbl is finding the food or drink, then saving a clean cutout.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -1483,18 +1540,47 @@ private fun LogEditDialog(
 
 @Composable
 private fun ShareLinkDialog(url: String, onDismiss: () -> Unit) {
+    val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Day invite link") },
+        title = { Text("Share this day") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Send this link to someone you want to share the day with.")
+                Text("Send this short invite to someone you want to share the day with.")
                 Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer) {
                     Text(url, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Nibbl invite", url))
+                    onDismiss()
+                },
+            ) {
+                Icon(Icons.Rounded.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Copy")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = {
+                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, url)
+                    }
+                    context.startActivity(Intent.createChooser(sendIntent, "Share Nibbl invite"))
+                    onDismiss()
+                },
+            ) {
+                Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Send")
+            }
+        },
     )
 }
 

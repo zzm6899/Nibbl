@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
     environment:
       TZ: Australia/Sydney
+      NIBBL_INGEST_KEY: ${NIBBL_INGEST_KEY:?set-a-long-random-ingest-key}
     ports:
       - "5100:8090"
     volumes:

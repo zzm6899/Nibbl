@@ -4,9 +4,9 @@ import android.util.Base64
 import org.json.JSONObject
 import java.net.URI
 import java.net.URLDecoder
-import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.zip.CRC32
 
 data class DayShareToken(
@@ -51,6 +51,13 @@ object ShareLinkTokenHelper {
         date: LocalDate,
         displayName: String,
         issuedAtMillis: Long = System.currentTimeMillis(),
+    ): String =
+        checksum("${date.toCompactDate()}|${displayName.trim()}|$issuedAtMillis".toByteArray(StandardCharsets.UTF_8))
+
+    private fun createLegacyDayToken(
+        date: LocalDate,
+        displayName: String,
+        issuedAtMillis: Long = System.currentTimeMillis(),
     ): String {
         val payload = JSONObject()
             .put("version", TOKEN_VERSION)
@@ -64,8 +71,43 @@ object ShareLinkTokenHelper {
         return "$encodedPayload.${checksum(payload)}"
     }
 
-    fun parseDayUrl(url: String): DayShareToken? =
-        tokenFromDayUrl(url)?.let(::parseDayToken)
+    fun parseDayUrl(url: String): DayShareToken? {
+        val uri = runCatching { URI(url.trim()) }.getOrNull() ?: return null
+        uri.rawQuery
+            ?.split("&")
+            ?.firstNotNullOfOrNull { parameter ->
+                val separator = parameter.indexOf("=")
+                if (separator < 0) return@firstNotNullOfOrNull null
+                val key = parameter.substring(0, separator).urlDecode()
+                val value = parameter.substring(separator + 1).urlDecode()
+                if (key == "i") value else null
+            }
+            ?.let { slug ->
+                val compactDate = slug.substringBefore("-")
+                val date = runCatching { LocalDate.parse(compactDate, COMPACT_DATE_FORMAT) }.getOrNull()
+                if (date != null) {
+                    return DayShareToken(
+                        date = date,
+                        displayName = AppSettings.DEFAULT_DISPLAY_NAME,
+                        issuedAtMillis = 0L,
+                    )
+                }
+            }
+        val invitePath = uri.path.orEmpty().trim('/').takeIf { it.startsWith("i/") }
+        if (invitePath != null) {
+            val slug = invitePath.removePrefix("i/")
+            val compactDate = slug.substringBefore("-")
+            val date = runCatching { LocalDate.parse(compactDate, COMPACT_DATE_FORMAT) }.getOrNull()
+            if (date != null) {
+                return DayShareToken(
+                    date = date,
+                    displayName = AppSettings.DEFAULT_DISPLAY_NAME,
+                    issuedAtMillis = 0L,
+                )
+            }
+        }
+        return tokenFromDayUrl(url)?.let(::parseLegacyDayToken)
+    }
 
     fun tokenFromDayUrl(url: String): String? {
         val uri = runCatching { URI(url.trim()) }.getOrNull() ?: return null
@@ -81,7 +123,9 @@ object ShareLinkTokenHelper {
             ?.firstOrNull { it.isNotBlank() }
     }
 
-    fun parseDayToken(token: String): DayShareToken? {
+    fun parseDayToken(token: String): DayShareToken? = parseLegacyDayToken(token)
+
+    private fun parseLegacyDayToken(token: String): DayShareToken? {
         val parts = token.trim().split(".")
         if (parts.size != 2 || parts.any { it.isBlank() }) return null
 
@@ -117,7 +161,7 @@ object ShareLinkTokenHelper {
 
     private fun createDayUrl(date: LocalDate, shareHost: String, token: String): String {
         val base = normalizeShareHost(shareHost)
-        return "$base/?day=$date&invite=${token.urlEncode()}"
+        return "$base/?i=${date.toCompactDate()}-$token"
     }
 
     private fun checksum(bytes: ByteArray): String {
@@ -126,9 +170,10 @@ object ShareLinkTokenHelper {
         return crc.value.toString(36)
     }
 
-    private fun String.urlEncode(): String =
-        URLEncoder.encode(this, StandardCharsets.UTF_8.name())
-
     private fun String.urlDecode(): String =
         URLDecoder.decode(this, StandardCharsets.UTF_8.name())
+
+    private fun LocalDate.toCompactDate(): String = format(COMPACT_DATE_FORMAT)
+
+    private val COMPACT_DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.BASIC_ISO_DATE
 }
