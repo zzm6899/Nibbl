@@ -21,13 +21,22 @@ class CategoryStore(context: Context) {
     suspend fun add(label: String): List<DrinkCategory> = withContext(Dispatchers.IO) {
         mutex.withLock {
             val cleanLabel = label.trim().ifBlank { return@withLock readCategories() }.take(28)
+            val hidden = readHiddenCategoryIds()
+            val defaultMatch = DrinkCategory.defaults.firstOrNull {
+                it.label.equals(cleanLabel, ignoreCase = true) || it.id == cleanLabel.toCategoryId()
+            }
+            if (defaultMatch != null && hidden.contains(defaultMatch.id)) {
+                writeCategoryState(readCustomCategories(), hidden - defaultMatch.id)
+                return@withLock readCategories()
+            }
+
             val current = readCategories()
             if (current.any { it.label.equals(cleanLabel, ignoreCase = true) || it.id == cleanLabel.toCategoryId() }) {
                 return@withLock current
             }
 
             val next = current + DrinkCategory.custom(cleanLabel, nextColor(current.size))
-            writeCustomCategories(next.filterNot { it.builtIn })
+            writeCategoryState(next.filterNot { it.builtIn }, hidden)
             next
         }
     }
@@ -35,33 +44,62 @@ class CategoryStore(context: Context) {
     suspend fun delete(id: String): List<DrinkCategory> = withContext(Dispatchers.IO) {
         mutex.withLock {
             val current = readCategories()
-            val next = current.filterNot { it.id == id && !it.builtIn }
-            writeCustomCategories(next.filterNot { it.builtIn })
-            next
+            val hidden = readHiddenCategoryIds()
+            val target = current.firstOrNull { it.id == id } ?: return@withLock current
+            val nextHidden = if (target.builtIn) hidden + target.id else hidden
+            val nextCustom = current.filterNot { it.id == id }.filterNot { it.builtIn }
+            writeCategoryState(nextCustom, nextHidden)
+            readCategories()
         }
     }
 
     private fun readCategories(): List<DrinkCategory> {
-        if (!storeFile.exists()) return DrinkCategory.defaults
-        val custom = runCatching {
-            val array = JSONArray(storeFile.readText())
-            List(array.length()) { index ->
-                array.optJSONObject(index)?.toCategoryOrNull()
-            }.filterNotNull()
-        }.getOrDefault(emptyList())
+        val custom = readCustomCategories()
+        val hidden = readHiddenCategoryIds()
 
-        val defaults = DrinkCategory.defaults
+        val defaults = DrinkCategory.defaults.filterNot { hidden.contains(it.id) }
         val customSorted = custom
-            .filterNot { customCategory -> defaults.any { it.id == customCategory.id } }
+            .filterNot { customCategory -> DrinkCategory.defaults.any { it.id == customCategory.id } }
             .distinctBy { it.id }
             .sortedBy { it.label.lowercase() }
         return defaults + customSorted
     }
 
-    private fun writeCustomCategories(categories: List<DrinkCategory>) {
+    private fun readCustomCategories(): List<DrinkCategory> {
+        if (!storeFile.exists()) return emptyList()
+        val raw = runCatching { storeFile.readText() }.getOrDefault("")
+        return runCatching {
+            val array = if (raw.trim().startsWith("{")) {
+                JSONObject(raw).optJSONArray("custom") ?: JSONArray()
+            } else {
+                JSONArray(raw)
+            }
+            List(array.length()) { index ->
+                array.optJSONObject(index)?.toCategoryOrNull()
+            }.filterNotNull()
+        }.getOrDefault(emptyList())
+    }
+
+    private fun readHiddenCategoryIds(): Set<String> {
+        if (!storeFile.exists()) return emptySet()
+        val raw = runCatching { storeFile.readText() }.getOrDefault("")
+        return runCatching {
+            val array = if (raw.trim().startsWith("{")) JSONObject(raw).optJSONArray("hiddenBuiltIns") else null
+            if (array == null) emptySet() else List(array.length()) { index -> array.optString(index) }
+                .filter { it.isNotBlank() }
+                .toSet()
+        }.getOrDefault(emptySet())
+    }
+
+    private fun writeCategoryState(categories: List<DrinkCategory>, hiddenBuiltIns: Set<String>) {
         storeDir.mkdirs()
         val temp = File(storeDir, "${storeFile.name}.tmp")
-        temp.writeText(JSONArray(categories.map { it.toJson() }).toString(2))
+        temp.writeText(
+            JSONObject()
+                .put("custom", JSONArray(categories.map { it.toJson() }))
+                .put("hiddenBuiltIns", JSONArray(hiddenBuiltIns.toList().sorted()))
+                .toString(2)
+        )
         if (!temp.renameTo(storeFile)) {
             temp.copyTo(storeFile, overwrite = true)
             temp.delete()

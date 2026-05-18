@@ -11,7 +11,9 @@ import java.io.File
 data class AppSettings(
     val weekStartsOnMonday: Boolean = false,
     val displayName: String = DEFAULT_DISPLAY_NAME,
+    val username: String = "",
     val shareHost: String = ShareLinkTokenHelper.DEFAULT_SHARE_HOST,
+    val hasSeenOnboarding: Boolean = false,
 ) {
     companion object {
         const val DEFAULT_DISPLAY_NAME = "Me"
@@ -72,6 +74,7 @@ class AppSettingsRepository(private val context: Context) {
 private fun AppSettings.normalized(): AppSettings =
     copy(
         displayName = displayName.trim().ifBlank { AppSettings.DEFAULT_DISPLAY_NAME }.take(48),
+        username = username.toFriendInviteCode(),
         shareHost = ShareLinkTokenHelper.normalizeShareHost(shareHost)
             .replace("https://api.nibbl.z2hs.au", ShareLinkTokenHelper.DEFAULT_SHARE_HOST)
             .replace("https://sipday.local", ShareLinkTokenHelper.DEFAULT_SHARE_HOST)
@@ -81,7 +84,9 @@ private fun AppSettings.normalized(): AppSettings =
 private fun AppSettings.toJson(): JSONObject = JSONObject()
     .put("weekStartsOnMonday", weekStartsOnMonday)
     .put("displayName", displayName)
+    .put("username", username)
     .put("shareHost", shareHost)
+    .put("hasSeenOnboarding", hasSeenOnboarding)
 
 private fun JSONObject.toAppSettings(): AppSettings =
     AppSettings(
@@ -89,9 +94,13 @@ private fun JSONObject.toAppSettings(): AppSettings =
         displayName = optNonBlankString("displayName")
             ?: optNonBlankString("name")
             ?: AppSettings.DEFAULT_DISPLAY_NAME,
+        username = optNonBlankString("username")
+            ?: optNonBlankString("userTag")
+            ?: "",
         shareHost = optNonBlankString("shareHost")
             ?: optNonBlankString("host")
             ?: ShareLinkTokenHelper.DEFAULT_SHARE_HOST,
+        hasSeenOnboarding = optBoolean("hasSeenOnboarding", false),
     )
 
 private fun JSONObject.optNonBlankString(name: String): String? =

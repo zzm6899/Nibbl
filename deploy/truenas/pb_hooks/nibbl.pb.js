@@ -16,6 +16,8 @@ routerAdd("POST", "/api/nibbl/ingest", (e) => {
     latitude: null,
     longitude: null,
     friendNames: [],
+    ownerName: "",
+    ownerTag: "",
   })
   e.bindBody(data)
 
@@ -30,6 +32,10 @@ routerAdd("POST", "/api/nibbl/ingest", (e) => {
   record.set("latitude", data.latitude)
   record.set("longitude", data.longitude)
   record.set("friendNames", data.friendNames || [])
+  try {
+    record.set("ownerName", data.ownerName || "")
+    record.set("ownerTag", data.ownerTag || "")
+  } catch (_) {}
 
   $app.save(record)
 
@@ -75,4 +81,31 @@ routerAdd("GET", "/api/nibbl/stats", (e) => {
   }
 
   return e.json(200, stats)
+})
+
+routerAdd("GET", "/api/nibbl/friends/available", (e) => {
+  const rawTag = String(e.request.url.query().get("tag") || "")
+  const tag = rawTag.trim().toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10)
+
+  if (!tag || tag.length < 3) {
+    return e.json(200, { tag, available: false, reason: "too_short" })
+  }
+
+  try {
+    const records = $app.findRecordsByFilter("logs", "", "-created", 500, 0)
+    const taken = records.some((record) => {
+      const ownerTag = String(record.get("ownerTag") || "").trim().toLowerCase()
+      if (ownerTag === tag) return true
+
+      const friendNames = record.get("friendNames") || []
+      if (!Array.isArray(friendNames)) return false
+      return friendNames.some((friend) => {
+        return String(friend || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10) === tag
+      })
+    })
+
+    return e.json(200, { tag, available: !taken })
+  } catch (error) {
+    return e.json(200, { tag, available: true, status: "setup" })
+  }
 })

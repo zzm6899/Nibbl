@@ -61,9 +61,9 @@ object ShareLinkTokenHelper {
         checksum("${date.toCompactDate()}|${displayName.trim()}|$issuedAtMillis".toByteArray(StandardCharsets.UTF_8))
 
     fun createCrewInviteUrl(person: CafeCrewPerson, settings: AppSettings): String {
-        val code = person.inviteCode.ifBlank { person.id.take(8) }
+        val code = person.inviteCode.ifBlank { person.id.toFriendInviteCode() }
         val name = person.displayName.trim().take(48)
-        return "${normalizeShareHost(settings.shareHost)}/?crew=${code.urlEncode()}&name=${name.urlEncode()}"
+        return "${normalizeShareHost(settings.shareHost)}/?friend=${code.urlEncode()}&name=${name.urlEncode()}"
     }
 
     fun parseCrewInviteUrl(url: String): CrewInviteToken? {
@@ -78,7 +78,7 @@ object ShareLinkTokenHelper {
             ?.toMap()
             ?: return null
 
-        val code = values["crew"]?.filter(Char::isLetterOrDigit)?.lowercase()?.take(10).orEmpty()
+        val code = (values["friend"] ?: values["crew"])?.toFriendInviteCode().orEmpty()
         if (code.isBlank()) return null
         return CrewInviteToken(
             code = code,

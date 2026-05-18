@@ -112,6 +112,7 @@ import com.foodtracker.diary.data.AppSettings
 import com.foodtracker.diary.data.AppSettingsRepository
 import com.foodtracker.diary.data.BackgroundRemover
 import com.foodtracker.diary.data.BackendDrinkReporter
+import com.foodtracker.diary.data.BackendFriendTagChecker
 import com.foodtracker.diary.data.CafeCrewPerson
 import com.foodtracker.diary.data.CafeCrewStore
 import com.foodtracker.diary.data.CategoryStore
@@ -121,6 +122,7 @@ import com.foodtracker.diary.data.FoodLog
 import com.foodtracker.diary.data.FoodLogRepository
 import com.foodtracker.diary.data.LocationHelper
 import com.foodtracker.diary.data.ShareLinkTokenHelper
+import com.foodtracker.diary.data.toFriendInviteCode
 import com.foodtracker.diary.ui.theme.FoodDiaryTheme
 import kotlinx.coroutines.launch
 import java.io.File
@@ -174,6 +176,7 @@ private fun DiaryApp(deepLinkUrl: String? = null) {
     val backendDrinkReporter = remember { BackendDrinkReporter() }
     var logs by remember { mutableStateOf(emptyList<FoodLog>()) }
     var settings by remember { mutableStateOf(AppSettings()) }
+    var settingsLoaded by remember { mutableStateOf(false) }
     var crew by remember { mutableStateOf(emptyList<CafeCrewPerson>()) }
     var categories by remember { mutableStateOf(DrinkCategory.defaults) }
     var section by remember { mutableStateOf(AppSection.Diary) }
@@ -189,6 +192,8 @@ private fun DiaryApp(deepLinkUrl: String? = null) {
     var processingPreviewPath by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingAvatarPerson by remember { mutableStateOf<CafeCrewPerson?>(null) }
+    var editFriend by remember { mutableStateOf<CafeCrewPerson?>(null) }
     var handledDeepLinkUrl by remember { mutableStateOf<String?>(null) }
     val filteredLogs = logs.filter { log ->
         (selectedFriend == null || log.friendNames.contains(selectedFriend)) &&
@@ -198,6 +203,7 @@ private fun DiaryApp(deepLinkUrl: String? = null) {
     suspend fun refresh() {
         logs = repository.logs()
         settings = settingsRepository.settings()
+        settingsLoaded = true
         crew = crewStore.ensurePeopleForNames(logs.flatMap { it.friendNames } + settings.displayName)
         categories = categoryStore.categories()
         if (selectedCategory != null && categories.none { it == selectedCategory }) {
@@ -228,7 +234,7 @@ private fun DiaryApp(deepLinkUrl: String? = null) {
             timestamp = selectedDate.atTime(LocalTime.now()).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
         )
         repository.save(repeated)
-        backendDrinkReporter.submit(settings.shareHost, repeated)
+        backendDrinkReporter.submit(settings.shareHost, repeated, settings)
         refresh()
         mode = CalendarMode.Day
     }
@@ -239,6 +245,27 @@ private fun DiaryApp(deepLinkUrl: String? = null) {
     val takePictureLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
         val uri = cameraUri
         if (saved && uri != null) scope.launch { importImage(uri) }
+    }
+    val avatarLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        val person = pendingAvatarPerson
+        pendingAvatarPerson = null
+        if (uri != null && person != null) {
+            scope.launch {
+                runCatching {
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: error("Could not open selected image")
+                    val ext = uri.lastPathSegment
+                        ?.substringAfterLast('.', "")
+                        ?.takeIf { it.isNotBlank() && it.length <= 5 }
+                        ?: "jpg"
+                    val suffix = ".$ext"
+                    crewStore.saveAvatarImage(person.id, bytes, suffix)
+                    refresh()
+                }.onFailure {
+                    error = it.message ?: "Could not save friend photo"
+                }
+            }
+        }
     }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
         if (permissions[Manifest.permission.CAMERA] == true) {
@@ -285,7 +312,7 @@ private fun DiaryApp(deepLinkUrl: String? = null) {
                     selected = section == AppSection.Crew,
                     onClick = { section = AppSection.Crew },
                     icon = { Icon(Icons.Rounded.Group, contentDescription = null) },
-                    label = { Text("Crew") },
+                    label = { Text("Friends") },
                 )
                 NavigationBarItem(
                     selected = section == AppSection.Settings,
@@ -390,6 +417,13 @@ private fun DiaryApp(deepLinkUrl: String? = null) {
                         onShare = { person ->
                             shareLink = ShareLinkTokenHelper.createCrewInviteUrl(person, settings)
                         },
+                        onPhoto = { person ->
+                            pendingAvatarPerson = person
+                            avatarLauncher.launch("image/*")
+                        },
+                        onEdit = { person ->
+                            editFriend = person
+                        },
                         onDelete = { person ->
                             scope.launch {
                                 crewStore.delete(person.id)
@@ -455,7 +489,7 @@ private fun DiaryApp(deepLinkUrl: String? = null) {
                         friendNames = friends,
                     )
                     repository.save(log)
-                    backendDrinkReporter.submit(settings.shareHost, log)
+                    backendDrinkReporter.submit(settings.shareHost, log, settings)
                     crewStore.ensurePeopleForNames(friends)
                     selectedDate = LocalDate.now()
                     pending = null
@@ -509,8 +543,65 @@ private fun DiaryApp(deepLinkUrl: String? = null) {
         )
     }
 
+    editFriend?.let { person ->
+        FriendEditDialog(
+            person = person,
+            existingTags = crew.filterNot { it.id == person.id }.map { it.inviteCode }.toSet(),
+            shareHost = settings.shareHost,
+            onDismiss = { editFriend = null },
+            onSave = { updated ->
+                scope.launch {
+                    crewStore.update(updated)
+                    editFriend = null
+                    refresh()
+                }
+            },
+        )
+    }
+
     shareLink?.let { url ->
         ShareLinkDialog(url = url, onDismiss = { shareLink = null })
+    }
+
+    if (settingsLoaded && !settings.hasSeenOnboarding) {
+        OnboardingDialog(
+            onStart = {
+                scope.launch {
+                    settings = settingsRepository.save(settings.copy(hasSeenOnboarding = true))
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun OnboardingDialog(onStart: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onStart,
+        title = { Text("Let's get started") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Nibbl saves food and drink photos into a calendar diary.")
+                OnboardingRow("1", "Add a photo from your album or camera.")
+                OnboardingRow("2", "Nibbl removes the background and keeps the cutout in your day.")
+                OnboardingRow("3", "Tag friends, cafes, caffeine, and custom food or drink types.")
+            }
+        },
+        confirmButton = {
+            Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) {
+                Text("Start my diary")
+            }
+        },
+    )
+}
+
+@Composable
+private fun OnboardingRow(number: String, text: String) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
+            Text(number, modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp), fontWeight = FontWeight.Black)
+        }
+        Text(text, color = MaterialTheme.colorScheme.secondary)
     }
 }
 
@@ -621,18 +712,21 @@ private fun DiaryPulse(date: LocalDate, mode: CalendarMode, logs: List<FoodLog>,
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun CrewScreen(
     crew: List<CafeCrewPerson>,
     onAdd: (String) -> Unit,
     onToggleFavorite: (CafeCrewPerson) -> Unit,
     onShare: (CafeCrewPerson) -> Unit,
+    onPhoto: (CafeCrewPerson) -> Unit,
+    onEdit: (CafeCrewPerson) -> Unit,
     onDelete: (CafeCrewPerson) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
     LazyColumn(contentPadding = PaddingValues(bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Text("Cafe crew", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-            Text("Editable people you can tag on food and drink logs.", color = MaterialTheme.colorScheme.secondary)
+            Text("Friends", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+            Text("Editable friends you can tag on food and drink logs.", color = MaterialTheme.colorScheme.secondary)
         }
         item {
             Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
@@ -651,7 +745,7 @@ private fun CrewScreen(
         items(crew, key = { it.id }) { person ->
             Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), tonalElevation = 1.dp) {
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    FriendInitial(person.displayName, 42.dp)
+                    FriendAvatar(person, 42.dp)
                     Column(Modifier.weight(1f)) {
                         Text(person.displayName, fontWeight = FontWeight.Black)
                         Text(
@@ -661,7 +755,7 @@ private fun CrewScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
                             TextButton(onClick = { onToggleFavorite(person) }) {
                                 Text(if (person.isFavorite) "Favorited" else "Favorite")
                             }
@@ -669,6 +763,16 @@ private fun CrewScreen(
                                 Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("Invite")
+                            }
+                            TextButton(onClick = { onPhoto(person) }) {
+                                Icon(Icons.Rounded.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Photo")
+                            }
+                            TextButton(onClick = { onEdit(person) }) {
+                                Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Edit")
                             }
                         }
                     }
@@ -693,7 +797,11 @@ private fun SettingsScreen(
     onShareDay: () -> Unit,
 ) {
     var displayName by remember(settings.displayName) { mutableStateOf(settings.displayName) }
+    var username by remember(settings.username) { mutableStateOf(settings.username) }
     var categoryName by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    var profileSaving by remember { mutableStateOf(false) }
+    var profileError by remember { mutableStateOf<String?>(null) }
     LazyColumn(contentPadding = PaddingValues(bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
@@ -713,12 +821,44 @@ private fun SettingsScreen(
                         )
                     }
                     OutlinedTextField(displayName, { displayName = it.take(48) }, label = { Text("Your display name") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        value = username,
+                        onValueChange = { username = it.toFriendInviteCode() },
+                        label = { Text("Public username") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        prefix = { Text("@") },
+                        supportingText = { Text("Used for admin stats and future cloud sync.") },
+                    )
+                    profileError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (profileSaving) LinearProgressIndicator(Modifier.fillMaxWidth())
                     Button(
                         onClick = {
-                            onSettings(settings.copy(displayName = displayName))
+                            val cleanName = displayName.trim()
+                            val cleanUsername = username.toFriendInviteCode()
+                            when {
+                                cleanName.isBlank() -> profileError = "Display name is required."
+                                cleanUsername.isNotBlank() && cleanUsername.length < 3 -> profileError = "Username needs at least 3 characters."
+                                else -> {
+                                    profileSaving = true
+                                    profileError = null
+                                    scope.launch {
+                                        val available = cleanUsername.isBlank() ||
+                                            cleanUsername == settings.username ||
+                                            BackendFriendTagChecker.isAvailable(settings.shareHost, cleanUsername)
+                                        profileSaving = false
+                                        if (available) {
+                                            onSettings(settings.copy(displayName = cleanName, username = cleanUsername))
+                                        } else {
+                                            profileError = "That username is already taken."
+                                        }
+                                    }
+                                }
+                            }
                         },
+                        enabled = !profileSaving,
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Save settings") }
+                    ) { Text(if (profileSaving) "Checking" else "Save profile") }
                 }
             }
         }
@@ -765,47 +905,33 @@ private fun SettingsScreen(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         categories.forEach { category ->
-                            if (category.builtIn) {
-                                AssistChip(
-                                    onClick = {},
-                                    label = { Text(category.label) },
-                                    leadingIcon = {
-                                        Box(
-                                            Modifier
-                                                .size(14.dp)
-                                                .clip(CircleShape)
-                                                .background(categoryColor(category))
-                                        )
-                                    },
-                                )
-                            } else {
-                                Surface(
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant,
-                                    modifier = Modifier.clickable { onDeleteCategory(category) },
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (category.builtIn) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                modifier = Modifier.clickable { onDeleteCategory(category) },
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Box(
-                                            Modifier
-                                                .size(14.dp)
-                                                .clip(CircleShape)
-                                                .background(categoryColor(category))
-                                        )
-                                        Text(category.label, fontWeight = FontWeight.SemiBold)
-                                        Icon(
-                                            Icons.Rounded.Close,
-                                            contentDescription = "Remove ${category.label}",
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                    }
+                                    Box(
+                                        Modifier
+                                            .size(14.dp)
+                                            .clip(CircleShape)
+                                            .background(categoryColor(category))
+                                    )
+                                    Text(category.label, fontWeight = FontWeight.SemiBold)
+                                    Icon(
+                                        Icons.Rounded.Close,
+                                        contentDescription = "Remove ${category.label}",
+                                        modifier = Modifier.size(16.dp),
+                                    )
                                 }
                             }
                         }
                     }
+                    Text("Tap any type to remove it. Add the same name again to restore a default type.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                 }
             }
         }
@@ -871,7 +997,7 @@ private fun FriendRail(friends: List<String>, selectedFriend: String?, onFriend:
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(Icons.Rounded.Group, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
-            Text("Cafe crew", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+            Text("Friends", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
             FilterChip(
                 selected = selectedFriend == null,
                 onClick = { onFriend(null) },
@@ -1016,6 +1142,25 @@ private fun FriendInitial(name: String, size: Dp) {
             )
         }
     }
+}
+
+@Composable
+private fun FriendAvatar(person: CafeCrewPerson, size: Dp) {
+    val avatarFile = person.avatarPath?.let(::File)?.takeIf { it.isFile }
+    if (avatarFile == null) {
+        FriendInitial(person.displayName, size)
+        return
+    }
+
+    Image(
+        painter = rememberAsyncImagePainter(avatarFile),
+        contentDescription = "${person.displayName} profile photo",
+        contentScale = ContentScale.Crop,
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape),
+    )
 }
 
 @Composable
@@ -1596,16 +1741,88 @@ private fun LogEditDialog(
 }
 
 @Composable
+private fun FriendEditDialog(
+    person: CafeCrewPerson,
+    existingTags: Set<String>,
+    shareHost: String,
+    onDismiss: () -> Unit,
+    onSave: (CafeCrewPerson) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var name by remember(person.id) { mutableStateOf(person.displayName) }
+    var tag by remember(person.id) { mutableStateOf(person.inviteCode) }
+    var checking by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val cleanTag = tag.toFriendInviteCode()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit friend") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it.take(48) },
+                    label = { Text("Friend name") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = tag,
+                    onValueChange = { tag = it.toFriendInviteCode() },
+                    label = { Text("Friend tag") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    prefix = { Text("@") },
+                    supportingText = { Text("3-10 letters or numbers. Used in invite links.") },
+                )
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                if (checking) LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = !checking,
+                onClick = {
+                    val cleanName = name.trim()
+                    when {
+                        cleanName.isBlank() -> error = "Name is required."
+                        cleanTag.length < 3 -> error = "Tag needs at least 3 characters."
+                        existingTags.contains(cleanTag) -> error = "That tag is already used on this device."
+                        else -> {
+                            checking = true
+                            error = null
+                            scope.launch {
+                                val available = BackendFriendTagChecker.isAvailable(shareHost, cleanTag)
+                                checking = false
+                                if (available || cleanTag == person.inviteCode) {
+                                    onSave(person.copy(displayName = cleanName, inviteCode = cleanTag))
+                                } else {
+                                    error = "That tag is already taken."
+                                }
+                            }
+                        }
+                    }
+                },
+            ) {
+                Text(if (checking) "Checking" else "Save")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
 private fun ShareLinkDialog(url: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (url.contains("crew=")) "Share crew tag" else "Share this day") },
+        title = { Text(if (url.contains("friend=") || url.contains("crew=")) "Share friend tag" else "Share this day") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    if (url.contains("crew=")) {
-                        "Send this to link a friend to your crew tags."
+                    if (url.contains("friend=") || url.contains("crew=")) {
+                        "Send this to link someone to your friend tags."
                     } else {
                         "Send this short invite to someone you want to share the day with."
                     },
@@ -1711,7 +1928,7 @@ private fun EntryDialog(
                         FilterChip(selected = category == it, onClick = { category = it }, label = { Text(it.label) })
                     }
                 }
-                Text("Cafe crew", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                Text("Friends", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     friendSuggestions.forEach { friend ->
                         FilterChip(

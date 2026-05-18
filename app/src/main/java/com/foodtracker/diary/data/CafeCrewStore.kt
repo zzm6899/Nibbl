@@ -13,7 +13,8 @@ import java.util.UUID
 data class CafeCrewPerson(
     val displayName: String,
     val id: String = UUID.randomUUID().toString(),
-    val inviteCode: String = id.toInviteCode(),
+    val inviteCode: String = id.toFriendInviteCode().ifBlank { "friend" },
+    val avatarPath: String? = null,
     val colorHex: String? = null,
     val isFavorite: Boolean = false,
     val sortOrder: Int = 0,
@@ -47,7 +48,7 @@ class CafeCrewStore(private val context: Context) {
     suspend fun upsertName(displayName: String): CafeCrewPerson = withContext(Dispatchers.IO) {
         mutex.withLock {
             val cleanName = displayName.cleanPersonName()
-            require(cleanName.isNotBlank()) { "Cafe crew person needs a name" }
+            require(cleanName.isNotBlank()) { "Friend needs a name" }
 
             val current = readPeople()
             val existing = current.firstOrNull { it.displayName.samePersonName(cleanName) }
@@ -65,9 +66,9 @@ class CafeCrewStore(private val context: Context) {
     suspend fun upsertInvite(displayName: String, inviteCode: String): CafeCrewPerson = withContext(Dispatchers.IO) {
         mutex.withLock {
             val cleanName = displayName.cleanPersonName()
-            val cleanCode = inviteCode.cleanInviteCode()
-            require(cleanName.isNotBlank()) { "Cafe crew person needs a name" }
-            require(cleanCode.isNotBlank()) { "Cafe crew invite needs a code" }
+            val cleanCode = inviteCode.toFriendInviteCode()
+            require(cleanName.isNotBlank()) { "Friend needs a name" }
+            require(cleanCode.isNotBlank()) { "Friend invite needs a code" }
 
             val current = readPeople()
             val existing = current.firstOrNull { it.inviteCode == cleanCode }
@@ -93,6 +94,27 @@ class CafeCrewStore(private val context: Context) {
             val existing = current.firstOrNull { it.id == id } ?: return@withLock null
             val renamed = existing.copy(displayName = displayName)
             upsertInternal(renamed)
+        }
+    }
+
+    suspend fun saveAvatarImage(id: String, bytes: ByteArray, suffix: String = ".jpg"): CafeCrewPerson? = withContext(Dispatchers.IO) {
+        require(bytes.isNotEmpty()) { "Avatar image cannot be empty" }
+        mutex.withLock {
+            val current = readPeople()
+            val existing = current.firstOrNull { it.id == id } ?: return@withLock null
+            val safeSuffix = suffix.trim().lowercase().let { if (it.startsWith(".")) it else ".$it" }
+                .filter { it.isLetterOrDigit() || it == '.' }
+                .takeIf { it in setOf(".jpg", ".jpeg", ".png", ".webp") }
+                ?: ".jpg"
+            val avatarDir = File(peopleDir, "avatars").apply { mkdirs() }
+            val file = File(avatarDir, "${id.toFriendInviteCode()}$safeSuffix")
+            val temp = File(avatarDir, "${file.name}.tmp")
+            temp.writeBytes(bytes)
+            if (!temp.renameTo(file)) {
+                temp.copyTo(file, overwrite = true)
+                if (!temp.delete()) temp.deleteOnExit()
+            }
+            upsertInternal(existing.copy(avatarPath = file.absolutePath))
         }
     }
 
@@ -157,7 +179,7 @@ class CafeCrewStore(private val context: Context) {
         val existing = current.firstOrNull { it.id == person.id }
         val normalized = person.normalized(now, current.nextSortOrder())
             .copy(createdAtMillis = existing?.createdAtMillis ?: person.createdAtMillis.coerceAtLeast(1L))
-        require(normalized.displayName.isNotBlank()) { "Cafe crew person needs a name" }
+        require(normalized.displayName.isNotBlank()) { "Friend needs a name" }
 
         val next = (current.filterNot { it.id == normalized.id } + normalized)
             .deduped()
@@ -179,7 +201,8 @@ class CafeCrewStore(private val context: Context) {
 private fun CafeCrewPerson.normalized(now: Long, fallbackSortOrder: Int): CafeCrewPerson =
     copy(
         displayName = displayName.cleanPersonName(),
-        inviteCode = inviteCode.cleanInviteCode().ifBlank { id.toInviteCode() },
+        inviteCode = inviteCode.toFriendInviteCode().ifBlank { id.toFriendInviteCode().ifBlank { "friend" } },
+        avatarPath = avatarPath?.trim()?.takeIf { it.isNotBlank() },
         colorHex = colorHex?.trim()?.takeIf { it.matches(Regex("^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$")) },
         sortOrder = sortOrder.takeIf { it >= 0 } ?: fallbackSortOrder,
         createdAtMillis = createdAtMillis.coerceAtLeast(1L),
@@ -198,6 +221,7 @@ private fun CafeCrewPerson.toJson(): JSONObject = JSONObject()
     .put("id", id)
     .put("displayName", displayName)
     .put("inviteCode", inviteCode)
+    .put("avatarPath", avatarPath ?: JSONObject.NULL)
     .put("colorHex", colorHex ?: JSONObject.NULL)
     .put("isFavorite", isFavorite)
     .put("sortOrder", sortOrder)
@@ -225,7 +249,10 @@ private fun Any?.toCafeCrewPersonOrNull(index: Int): CafeCrewPerson? = runCatchi
                 id = parsedId,
                 inviteCode = optNonBlankString("inviteCode")
                     ?: optNonBlankString("code")
-                    ?: parsedId.toInviteCode(),
+                    ?: parsedId.toFriendInviteCode(),
+                avatarPath = optNonBlankString("avatarPath")
+                    ?: optNonBlankString("photoPath")
+                    ?: optNonBlankString("profileImagePath"),
                 displayName = optNonBlankString("displayName")
                     ?: optNonBlankString("name")
                     ?: optNonBlankString("friendName")
@@ -253,9 +280,3 @@ private fun String.normalizedPersonKey(): String =
 
 private fun String.samePersonName(other: String): Boolean =
     normalizedPersonKey() == other.normalizedPersonKey()
-
-private fun String.cleanInviteCode(): String =
-    trim().filter(Char::isLetterOrDigit).lowercase().take(10)
-
-private fun String.toInviteCode(): String =
-    cleanInviteCode().ifBlank { "crew" }

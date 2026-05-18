@@ -9,7 +9,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 class BackendDrinkReporter {
-    suspend fun submit(shareHost: String, log: FoodLog) = withContext(Dispatchers.IO) {
+    suspend fun submit(shareHost: String, log: FoodLog, settings: AppSettings? = null) = withContext(Dispatchers.IO) {
         val ingestKey = BuildConfig.NIBBL_INGEST_KEY
         if (ingestKey.isBlank()) return@withContext
 
@@ -24,7 +24,7 @@ class BackendDrinkReporter {
                 setRequestProperty("X-Nibbl-Key", ingestKey)
             }
 
-            val payload = log.toBackendJson().toString().toByteArray(Charsets.UTF_8)
+            val payload = log.toBackendJson(settings).toString().toByteArray(Charsets.UTF_8)
             connection.outputStream.use { it.write(payload) }
             try {
                 connection.inputStream?.close()
@@ -37,7 +37,7 @@ class BackendDrinkReporter {
     }
 }
 
-private fun FoodLog.toBackendJson(): JSONObject =
+private fun FoodLog.toBackendJson(settings: AppSettings?): JSONObject =
     JSONObject()
         .put("timestamp", timestamp)
         .put("title", title)
@@ -48,3 +48,7 @@ private fun FoodLog.toBackendJson(): JSONObject =
         .put("latitude", latitude ?: JSONObject.NULL)
         .put("longitude", longitude ?: JSONObject.NULL)
         .put("friendNames", JSONArray(friendNames))
+        .put("ownerName", settings?.displayName ?: "")
+        .put("ownerTag", settings?.username?.ifBlank { settings.displayName.toFriendTag() } ?: "")
+
+private fun String.toFriendTag(): String = toFriendInviteCode()

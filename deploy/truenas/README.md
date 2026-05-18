@@ -12,8 +12,7 @@ This stack runs PocketBase on host port `5100`. Your existing Caddy routes both 
 1. Create this dataset layout:
    - `/mnt/mainstorage/apps/nibbl`
    - `/mnt/mainstorage/apps/nibbl/pb_data`
-   - `/mnt/mainstorage/apps/nibbl/pb_public`
-2. Put the files in `deploy/truenas` into `/mnt/mainstorage/apps/nibbl`.
+2. Put `deploy/truenas/docker-compose.yml` and your `.env` into `/mnt/mainstorage/apps/nibbl`.
 3. Create a local `.env` beside `docker-compose.yml` with a new ingest key:
 
 ```env
@@ -29,7 +28,7 @@ Build the Android APK with the same value:
 4. Point DNS:
    - `nibbl.z2hs.au` -> your TrueNAS IP/public proxy
    - `api.nibbl.z2hs.au` -> your TrueNAS IP/public proxy
-5. In TrueNAS Apps, create a custom app from `docker-compose.yml`.
+5. In TrueNAS Apps, create a custom app from `docker-compose.yml`. The public website and PocketBase hooks are baked into the Docker image, so do not mount `pb_public` or `pb_hooks` over the container paths.
 6. Open the admin UI:
    - `https://api.nibbl.z2hs.au/_/`
 7. Health check:
@@ -42,7 +41,7 @@ PocketBase asks you to create the first admin account the first time you open `/
 After that, create these collections:
 
 - `profiles`: display name, avatar color.
-- `crew`: owner, display name, color, favorite flag.
+- `friends`: owner, display name, avatar, color, favorite flag.
 - `logs`: owner, date, title, category, caffeine, cafe, location, image.
 - `day_shares`: owner, date, token, access mode, expiry.
 
