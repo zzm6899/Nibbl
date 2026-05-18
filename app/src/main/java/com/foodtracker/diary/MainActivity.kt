@@ -438,6 +438,7 @@ private fun DiaryApp(deepLinkUrl: String? = null) {
                         onSettings = { next ->
                             scope.launch {
                                 settings = settingsRepository.save(next)
+                                BackendFriendTagChecker.updateOwnerProfile(settings.shareHost, settings)
                             }
                         },
                         onAddCategory = { label ->

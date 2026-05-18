@@ -16,6 +16,7 @@ routerAdd("POST", "/api/nibbl/ingest", (e) => {
     latitude: null,
     longitude: null,
     friendNames: [],
+    ownerId: "",
     ownerName: "",
     ownerTag: "",
   })
@@ -33,6 +34,7 @@ routerAdd("POST", "/api/nibbl/ingest", (e) => {
   record.set("longitude", data.longitude)
   record.set("friendNames", data.friendNames || [])
   try {
+    record.set("ownerId", data.ownerId || "")
     record.set("ownerName", data.ownerName || "")
     record.set("ownerTag", data.ownerTag || "")
   } catch (_) {}
@@ -107,5 +109,36 @@ routerAdd("GET", "/api/nibbl/friends/available", (e) => {
     return e.json(200, { tag, available: !taken })
   } catch (error) {
     return e.json(200, { tag, available: true, status: "setup" })
+  }
+})
+
+routerAdd("POST", "/api/nibbl/profile", (e) => {
+  requireIngestKey(e)
+
+  const data = new DynamicModel({
+    ownerId: "",
+    ownerName: "",
+    ownerTag: "",
+  })
+  e.bindBody(data)
+
+  const ownerId = String(data.ownerId || "").trim().slice(0, 64)
+  const ownerName = String(data.ownerName || "").trim().slice(0, 48)
+  const ownerTag = String(data.ownerTag || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10)
+
+  if (!ownerId) return e.json(400, { error: "ownerId_required" })
+
+  try {
+    const records = $app.findRecordsByFilter("logs", `ownerId = "${ownerId.replace(/"/g, '\\"')}"`, "-created", 500, 0)
+    records.forEach((record) => {
+      try {
+        record.set("ownerName", ownerName)
+        record.set("ownerTag", ownerTag)
+        $app.save(record)
+      } catch (_) {}
+    })
+    return e.json(200, { updated: records.length })
+  } catch (error) {
+    return e.json(200, { updated: 0, status: "setup" })
   }
 })

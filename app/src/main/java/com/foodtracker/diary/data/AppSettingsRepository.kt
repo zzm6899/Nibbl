@@ -7,9 +7,11 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
+import java.util.UUID
 
 data class AppSettings(
     val weekStartsOnMonday: Boolean = false,
+    val ownerId: String = UUID.randomUUID().toString(),
     val displayName: String = DEFAULT_DISPLAY_NAME,
     val username: String = "",
     val shareHost: String = ShareLinkTokenHelper.DEFAULT_SHARE_HOST,
@@ -73,6 +75,7 @@ class AppSettingsRepository(private val context: Context) {
 
 private fun AppSettings.normalized(): AppSettings =
     copy(
+        ownerId = ownerId.trim().ifBlank { UUID.randomUUID().toString() }.take(64),
         displayName = displayName.trim().ifBlank { AppSettings.DEFAULT_DISPLAY_NAME }.take(48),
         username = username.toFriendInviteCode(),
         shareHost = ShareLinkTokenHelper.normalizeShareHost(shareHost)
@@ -83,6 +86,7 @@ private fun AppSettings.normalized(): AppSettings =
 
 private fun AppSettings.toJson(): JSONObject = JSONObject()
     .put("weekStartsOnMonday", weekStartsOnMonday)
+    .put("ownerId", ownerId)
     .put("displayName", displayName)
     .put("username", username)
     .put("shareHost", shareHost)
@@ -91,6 +95,9 @@ private fun AppSettings.toJson(): JSONObject = JSONObject()
 private fun JSONObject.toAppSettings(): AppSettings =
     AppSettings(
         weekStartsOnMonday = optBoolean("weekStartsOnMonday", optString("weekStart").equals("monday", ignoreCase = true)),
+        ownerId = optNonBlankString("ownerId")
+            ?: optNonBlankString("installId")
+            ?: UUID.randomUUID().toString(),
         displayName = optNonBlankString("displayName")
             ?: optNonBlankString("name")
             ?: AppSettings.DEFAULT_DISPLAY_NAME,
