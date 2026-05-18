@@ -166,9 +166,9 @@ app.get("/api/nibbl/friends/resolve", async (req, res, next) => {
     const tag = friendTag(req.query.tag);
     if (!tag || tag.length < 3) return res.status(400).json({ error: "tag_required" });
     const { rows } = await pool.query(
-      `select owner_name, owner_tag from devices where owner_tag = $1
+      `select owner_name, owner_tag, avatar_key from devices where owner_tag = $1
        union all
-       select owner_name, owner_tag from logs where owner_tag = $1
+       select owner_name, owner_tag, null as avatar_key from logs where owner_tag = $1
        limit 1`,
       [tag],
     );
@@ -176,24 +176,33 @@ app.get("/api/nibbl/friends/resolve", async (req, res, next) => {
     res.json({
       displayName: rows[0].owner_name || rows[0].owner_tag,
       tag: rows[0].owner_tag,
+      avatarUrl: rows[0].avatar_key ? objectUrl(rows[0].avatar_key) : null,
     });
   } catch (error) {
     next(error);
   }
 });
 
-app.post("/api/nibbl/profile", requireDeviceAuth, async (req, res, next) => {
+app.post("/api/nibbl/profile", requireDeviceAuth, upload.fields([{ name: "avatar", maxCount: 1 }]), async (req, res, next) => {
   try {
+    const body = parseBody(req.body);
     const ownerId = req.device.owner_id;
     if (!ownerId) return res.status(400).json({ error: "ownerId_required" });
-    const ownerName = text(req.body.ownerName, 48);
-    const ownerTag = friendTag(req.body.ownerTag);
+    const ownerName = text(body.ownerName, 48);
+    const ownerTag = friendTag(body.ownerTag);
     await assertFriendTagAvailable(ownerTag, ownerId);
+    const avatarFile = firstFile(req.files, "avatar");
+    const avatarObject = avatarFile ? await putObject(avatarFile, "avatars") : null;
     const [logResult] = await Promise.all([
       pool.query("update logs set owner_name = $1, owner_tag = $2 where owner_id = $3", [ownerName, ownerTag, ownerId]),
-      pool.query("update devices set owner_name = $1, owner_tag = $2, updated_at = now() where owner_id = $3", [ownerName, ownerTag, ownerId]),
+      pool.query(
+        `update devices
+         set owner_name = $1, owner_tag = $2, avatar_key = coalesce($3, avatar_key), updated_at = now()
+         where owner_id = $4`,
+        [ownerName, ownerTag, avatarObject?.key || null, ownerId],
+      ),
     ]);
-    res.json({ updated: logResult.rowCount });
+    res.json({ updated: logResult.rowCount, avatarUrl: avatarObject?.url || null });
   } catch (error) {
     next(error);
   }
@@ -354,6 +363,7 @@ async function bootstrap() {
       owner_id text primary key,
       owner_name text not null default '',
       owner_tag text not null default '',
+      avatar_key text,
       token_hash text not null unique,
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
@@ -368,6 +378,7 @@ async function bootstrap() {
     );
     create index if not exists day_shares_date_idx on day_shares(log_date);
   `);
+  await pool.query("alter table devices add column if not exists avatar_key text");
   await ensureObjectStorage();
 }
 

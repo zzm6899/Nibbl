@@ -3,6 +3,8 @@ package com.foodtracker.diary.data
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.DataOutputStream
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -10,6 +12,7 @@ import java.net.URLEncoder
 data class ResolvedFriendTag(
     val displayName: String,
     val tag: String,
+    val avatarUrl: String? = null,
 )
 
 object BackendFriendTagChecker {
@@ -36,11 +39,9 @@ object BackendFriendTagChecker {
     }
 
     suspend fun resolve(shareHost: String, tagOrUrl: String): ResolvedFriendTag? = withContext(Dispatchers.IO) {
-        ShareLinkTokenHelper.parseCrewInviteUrl(tagOrUrl)?.let {
-            return@withContext ResolvedFriendTag(it.displayName, it.code)
-        }
+        val invite = ShareLinkTokenHelper.parseCrewInviteUrl(tagOrUrl)
 
-        val cleanTag = tagOrUrl.toFriendInviteCode()
+        val cleanTag = invite?.code ?: tagOrUrl.toFriendInviteCode()
         if (cleanTag.length < 3) return@withContext null
 
         for (host in ShareLinkTokenHelper.apiHostsFor(shareHost)) {
@@ -61,13 +62,14 @@ object BackendFriendTagChecker {
             connection.disconnect()
             val json = JSONObject(body)
             ResolvedFriendTag(
-                displayName = json.optString("displayName", cleanTag).trim().ifBlank { cleanTag },
+                displayName = json.optString("displayName", invite?.displayName ?: cleanTag).trim().ifBlank { invite?.displayName ?: cleanTag },
                 tag = json.optString("tag", cleanTag).toFriendInviteCode(),
+                avatarUrl = json.optString("avatarUrl", "").trim().takeIf { it.isNotBlank() },
             )
             }.getOrNull()
             if (resolved != null) return@withContext resolved
         }
-        null
+        invite?.let { ResolvedFriendTag(it.displayName, it.code) }
     }
 
     suspend fun updateOwnerProfile(shareHost: String, settings: AppSettings): Boolean = withContext(Dispatchers.IO) {
@@ -76,12 +78,17 @@ object BackendFriendTagChecker {
         for (host in ShareLinkTokenHelper.apiHostsFor(shareHost)) {
             val updated = runCatching {
             val endpoint = "$host/api/nibbl/profile"
+            val avatarFile = settings.profileImagePath?.let(::File)?.takeIf { it.isFile }
+            val boundary = "NibblProfile${System.currentTimeMillis()}"
             val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 connectTimeout = 8_000
-                readTimeout = 8_000
+                readTimeout = 20_000
                 doOutput = true
-                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty(
+                    "Content-Type",
+                    if (avatarFile != null) "multipart/form-data; boundary=$boundary" else "application/json",
+                )
                 setRequestProperty("Authorization", "Bearer ${settings.apiToken}")
             }
 
@@ -89,9 +96,15 @@ object BackendFriendTagChecker {
                 .put("ownerId", settings.ownerId)
                 .put("ownerName", settings.displayName)
                 .put("ownerTag", settings.username)
-                .toString()
-                .toByteArray(Charsets.UTF_8)
-            connection.outputStream.use { it.write(payload) }
+            if (avatarFile != null) {
+                DataOutputStream(connection.outputStream).use { output ->
+                    output.writeMultipartField(boundary, "payload", payload.toString())
+                    output.writeMultipartFile(boundary, "avatar", avatarFile)
+                    output.writeBytes("--$boundary--\r\n")
+                }
+            } else {
+                connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+            }
             val code = connection.responseCode
             try {
                 connection.inputStream?.close()
@@ -110,3 +123,24 @@ object BackendFriendTagChecker {
 
 fun String.toFriendInviteCode(): String =
     trim().filter(Char::isLetterOrDigit).lowercase().take(10)
+
+private fun DataOutputStream.writeMultipartField(boundary: String, name: String, value: String) {
+    writeBytes("--$boundary\r\n")
+    writeBytes("Content-Disposition: form-data; name=\"$name\"\r\n")
+    writeBytes("Content-Type: application/json; charset=utf-8\r\n\r\n")
+    write(value.toByteArray(Charsets.UTF_8))
+    writeBytes("\r\n")
+}
+
+private fun DataOutputStream.writeMultipartFile(boundary: String, name: String, file: File) {
+    val contentType = when (file.extension.lowercase()) {
+        "png" -> "image/png"
+        "webp" -> "image/webp"
+        else -> "image/jpeg"
+    }
+    writeBytes("--$boundary\r\n")
+    writeBytes("Content-Disposition: form-data; name=\"$name\"; filename=\"${file.name}\"\r\n")
+    writeBytes("Content-Type: $contentType\r\n\r\n")
+    file.inputStream().use { input -> input.copyTo(this) }
+    writeBytes("\r\n")
+}

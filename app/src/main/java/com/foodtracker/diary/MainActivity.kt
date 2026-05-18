@@ -269,7 +269,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
             error = "Your profile is edited in Settings, not Friends."
             return
         }
-        crewStore.upsertInvite(resolved.displayName, resolved.tag)
+        crewStore.upsertInvite(resolved.displayName, resolved.tag, resolved.avatarUrl)
         error = null
         refresh()
     }
@@ -352,8 +352,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
         val url = deepLinkUrl?.takeIf { it.isNotBlank() && it != handledDeepLinkUrl } ?: return@LaunchedEffect
         handledDeepLinkUrl = url
         ShareLinkTokenHelper.parseCrewInviteUrl(url)?.let { invite ->
-            crewStore.upsertInvite(invite.displayName, invite.code)
-            refresh()
+            addFriendFromInviteOrTag(url)
             section = AppSection.Crew
         }
         ShareLinkTokenHelper.parseDayUrl(url)?.let { invite ->
@@ -488,9 +487,6 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                                 crewStore.update(person.copy(isFavorite = !person.isFavorite))
                                 refresh()
                             }
-                        },
-                        onShare = { person ->
-                            shareLink = ShareLinkTokenHelper.createCrewInviteUrl(person, settings)
                         },
                         onPhoto = { person ->
                             pendingAvatarPerson = person
@@ -795,7 +791,6 @@ private fun CrewScreen(
     crew: List<CafeCrewPerson>,
     onAdd: (String) -> Unit,
     onToggleFavorite: (CafeCrewPerson) -> Unit,
-    onShare: (CafeCrewPerson) -> Unit,
     onPhoto: (CafeCrewPerson) -> Unit,
     onEdit: (CafeCrewPerson) -> Unit,
     onDelete: (CafeCrewPerson) -> Unit,
@@ -912,18 +907,13 @@ private fun CrewScreen(
                     }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         AssistChip(
-                            onClick = { onShare(person) },
-                            label = { Text("Invite") },
-                            leadingIcon = { Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                        )
-                        AssistChip(
                             onClick = { onToggleFavorite(person) },
                             label = { Text(if (person.isFavorite) "Favorited" else "Favorite") },
                             leadingIcon = { Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp)) },
                         )
                         AssistChip(
                             onClick = { onPhoto(person) },
-                            label = { Text("Photo") },
+                            label = { Text(if (person.avatarPath == null && person.remoteAvatarUrl != null) "Override photo" else "Photo") },
                             leadingIcon = { Icon(Icons.Rounded.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp)) },
                         )
                         AssistChip(
@@ -1341,13 +1331,14 @@ private fun FriendInitial(name: String, size: Dp) {
 @Composable
 private fun FriendAvatar(person: CafeCrewPerson, size: Dp) {
     val avatarFile = person.avatarPath?.let(::File)?.takeIf { it.isFile }
-    if (avatarFile == null) {
+    val avatarSource: Any? = avatarFile ?: person.remoteAvatarUrl?.takeIf { it.isNotBlank() }
+    if (avatarSource == null) {
         FriendInitial(person.displayName, size)
         return
     }
 
     Image(
-        painter = rememberAsyncImagePainter(avatarFile),
+        painter = rememberAsyncImagePainter(avatarSource),
         contentDescription = "${person.displayName} profile photo",
         contentScale = ContentScale.Crop,
         modifier = Modifier

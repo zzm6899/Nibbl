@@ -15,6 +15,7 @@ data class CafeCrewPerson(
     val id: String = UUID.randomUUID().toString(),
     val inviteCode: String = id.toFriendInviteCode().ifBlank { "friend" },
     val avatarPath: String? = null,
+    val remoteAvatarUrl: String? = null,
     val colorHex: String? = null,
     val isFavorite: Boolean = false,
     val sortOrder: Int = 0,
@@ -63,7 +64,7 @@ class CafeCrewStore(private val context: Context) {
         }
     }
 
-    suspend fun upsertInvite(displayName: String, inviteCode: String): CafeCrewPerson = withContext(Dispatchers.IO) {
+    suspend fun upsertInvite(displayName: String, inviteCode: String, remoteAvatarUrl: String? = null): CafeCrewPerson = withContext(Dispatchers.IO) {
         mutex.withLock {
             val cleanName = displayName.cleanPersonName()
             val cleanCode = inviteCode.toFriendInviteCode()
@@ -75,12 +76,13 @@ class CafeCrewStore(private val context: Context) {
                 ?: current.firstOrNull { it.displayName.samePersonName(cleanName) }
 
             if (existing != null) {
-                upsertInternal(existing.copy(displayName = cleanName, inviteCode = cleanCode))
+                upsertInternal(existing.copy(displayName = cleanName, inviteCode = cleanCode, remoteAvatarUrl = remoteAvatarUrl ?: existing.remoteAvatarUrl))
             } else {
                 upsertInternal(
                     CafeCrewPerson(
                         displayName = cleanName,
                         inviteCode = cleanCode,
+                        remoteAvatarUrl = remoteAvatarUrl,
                         sortOrder = current.nextSortOrder(),
                     )
                 )
@@ -203,6 +205,7 @@ private fun CafeCrewPerson.normalized(now: Long, fallbackSortOrder: Int): CafeCr
         displayName = displayName.cleanPersonName(),
         inviteCode = inviteCode.toFriendInviteCode().ifBlank { id.toFriendInviteCode().ifBlank { "friend" } },
         avatarPath = avatarPath?.trim()?.takeIf { it.isNotBlank() },
+        remoteAvatarUrl = remoteAvatarUrl?.trim()?.takeIf { it.startsWith("http://") || it.startsWith("https://") || it.startsWith("/") },
         colorHex = colorHex?.trim()?.takeIf { it.matches(Regex("^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$")) },
         sortOrder = sortOrder.takeIf { it >= 0 } ?: fallbackSortOrder,
         createdAtMillis = createdAtMillis.coerceAtLeast(1L),
@@ -222,6 +225,7 @@ private fun CafeCrewPerson.toJson(): JSONObject = JSONObject()
     .put("displayName", displayName)
     .put("inviteCode", inviteCode)
     .put("avatarPath", avatarPath ?: JSONObject.NULL)
+    .put("remoteAvatarUrl", remoteAvatarUrl ?: JSONObject.NULL)
     .put("colorHex", colorHex ?: JSONObject.NULL)
     .put("isFavorite", isFavorite)
     .put("sortOrder", sortOrder)
@@ -253,6 +257,9 @@ private fun Any?.toCafeCrewPersonOrNull(index: Int): CafeCrewPerson? = runCatchi
                 avatarPath = optNonBlankString("avatarPath")
                     ?: optNonBlankString("photoPath")
                     ?: optNonBlankString("profileImagePath"),
+                remoteAvatarUrl = optNonBlankString("remoteAvatarUrl")
+                    ?: optNonBlankString("avatarUrl")
+                    ?: optNonBlankString("profileImageUrl"),
                 displayName = optNonBlankString("displayName")
                     ?: optNonBlankString("name")
                     ?: optNonBlankString("friendName")
