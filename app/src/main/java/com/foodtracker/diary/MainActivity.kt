@@ -250,7 +250,12 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
     suspend fun createPublicDayShare(date: LocalDate): String? {
         val registered = ensureRegisteredSettings()
         return BackendShareClient.createDayShare(settingsRepository, registered, date).also {
-            error = if (it == null) "Could not create a public day link. Check your server connection and try again." else null
+            if (it == null) {
+                error = "Could not create a public day link. Check your server connection and try again."
+                Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+            } else {
+                error = null
+            }
         }
     }
 
@@ -525,7 +530,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                             }
                         },
                         onShareDay = {
-                            scope.launch { shareLink = createPublicDayShare(selectedDate) }
+                            shareLink = createPublicDayShare(selectedDate)
                         },
                         onShareProfile = {
                             shareLink = ShareLinkTokenHelper.createProfileInviteUrl(settings)
@@ -943,7 +948,7 @@ private fun SettingsScreen(
     onProfilePhoto: () -> Unit,
     onAddCategory: (String) -> Unit,
     onDeleteCategory: (DrinkCategory) -> Unit,
-    onShareDay: () -> Unit,
+    onShareDay: suspend () -> Unit,
     onShareProfile: () -> Unit,
 ) {
     var displayName by remember(settings.displayName) { mutableStateOf(settings.displayName) }
@@ -952,6 +957,7 @@ private fun SettingsScreen(
     val scope = rememberCoroutineScope()
     var profileSaving by remember { mutableStateOf(false) }
     var profileError by remember { mutableStateOf<String?>(null) }
+    var shareDayCreating by remember { mutableStateOf(false) }
     LazyColumn(contentPadding = PaddingValues(bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
@@ -1041,10 +1047,20 @@ private fun SettingsScreen(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Share a day", fontWeight = FontWeight.Black)
                     Text("Create a public web link for your ${selectedDate.format(DateTimeFormatter.ofPattern("d MMM"))} food and drink photos.", color = MaterialTheme.colorScheme.primary)
-                    Button(onClick = onShareDay) {
+                    if (shareDayCreating) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                shareDayCreating = true
+                                onShareDay()
+                                shareDayCreating = false
+                            }
+                        },
+                        enabled = !shareDayCreating,
+                    ) {
                         Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Create public day link")
+                        Text(if (shareDayCreating) "Creating link" else "Create public day link")
                     }
                 }
             }

@@ -499,18 +499,22 @@ async function putObject(file, prefix) {
   const ext = extensionFor(file);
   const key = `${prefix}/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}${ext}`;
   if (s3) {
-    await s3.send(new PutObjectCommand({
-      Bucket: s3Bucket,
-      Key: key,
-      Body: file.buffer,
-      ContentType: file.mimetype || "application/octet-stream",
-    }));
-  } else {
-    const target = path.join(localObjectDir, key);
-    await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, file.buffer);
+    try {
+      await s3.send(new PutObjectCommand({
+        Bucket: s3Bucket,
+        Key: key,
+        Body: file.buffer,
+        ContentType: file.mimetype || "application/octet-stream",
+      }));
+      return { key, url: objectUrl(key) };
+    } catch (error) {
+      objectReady = false;
+      lastObjectError = error.message || "object_upload_failed";
+      console.error("Object upload failed; falling back to local object storage:", lastObjectError);
+    }
   }
-  return { key, url: objectUrl(key) };
+  await writeLocalObject(key, file.buffer);
+  return { key, url: localObjectUrl(key) };
 }
 
 async function sendObject(key, res) {
@@ -519,17 +523,31 @@ async function sendObject(key, res) {
     return;
   }
   if (s3) {
-    const object = await s3.send(new GetObjectCommand({ Bucket: s3Bucket, Key: key }));
-    res.type(contentTypeFor(key));
-    object.Body.pipe(res);
-    return;
+    try {
+      const object = await s3.send(new GetObjectCommand({ Bucket: s3Bucket, Key: key }));
+      res.type(contentTypeFor(key));
+      object.Body.pipe(res);
+      return;
+    } catch (error) {
+      lastObjectError = error.message || "object_read_failed";
+    }
   }
   res.type(contentTypeFor(key));
   res.sendFile(path.join(localObjectDir, key));
 }
 
 function objectUrl(key) {
-  return s3PublicBaseUrl ? `${s3PublicBaseUrl}/${key}` : `/objects/${key}`;
+  return s3PublicBaseUrl && objectReady ? `${s3PublicBaseUrl}/${key}` : localObjectUrl(key);
+}
+
+function localObjectUrl(key) {
+  return `/objects/${key}`;
+}
+
+async function writeLocalObject(key, buffer) {
+  const target = path.join(localObjectDir, key);
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  await fs.writeFile(target, buffer);
 }
 
 function renderSharePage(day, date, share = null) {
@@ -540,7 +558,7 @@ function renderSharePage(day, date, share = null) {
     </article>
   `).join("");
   const owner = share?.owner_name || share?.owner_tag || "";
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nibbl ${escapeHtml(date)}</title><link rel="stylesheet" href="/styles.css"></head><body><main><section class="hero compact"><div class="mark logo-mark"><span class="cup-face"></span></div><h1>${escapeHtml(date)}</h1><p>${owner ? `${escapeHtml(owner)} shared this day. ` : ""}${day.logs.length ? `${day.logs.length} saved food and drink moments.` : "No public logs have synced for this day yet."}</p></section><section class="share-grid">${cards}</section><section id="install" class="install-strip"><div><h2>Want to add your own photos?</h2><p>Install Nibbl to save food and drink photos, then share your profile or day links with friends.</p></div><a class="button" href="/">Install now</a></section></main></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nibbl ${escapeHtml(date)}</title><link rel="stylesheet" href="/styles.css"></head><body><main><section class="hero compact share-hero"><div class="mark logo-mark"><span class="cup-face"></span></div><p class="eyebrow">Shared diary day</p><h1>${escapeHtml(date)}</h1><p>${owner ? `${escapeHtml(owner)} shared this day. ` : ""}${day.logs.length ? `${day.logs.length} saved food and drink moments.` : "No public logs have synced for this day yet."}</p><div class="actions"><a class="button" href="intent://nibbl.z2hs.au/#Intent;scheme=https;package=au.z2hs.nibbl;S.browser_fallback_url=${encodeURIComponent("https://play.google.com/store/apps/details?id=au.z2hs.nibbl")};end">Open in Nibbl</a><a class="button secondary" href="https://play.google.com/store/apps/details?id=au.z2hs.nibbl">Install app</a></div></section><section class="share-grid">${cards}</section><section id="install" class="install-strip"><div><h2>Want to add your own photos?</h2><p>Install Nibbl to save food and drink photos, then share your profile or day links with friends.</p></div><a class="button" href="https://play.google.com/store/apps/details?id=au.z2hs.nibbl">Install now</a></section></main></body></html>`;
 }
 
 async function requireDeviceAuth(req, res, next) {
@@ -649,11 +667,12 @@ function friendTag(value) {
 }
 
 function dateFromSlug(slug) {
-  const compact = String(slug || "").split("-")[0];
-  const candidate = /^\d{8}$/.test(compact)
-    ? `${compact.slice(0, 4)}-${compact.slice(4, 6)}-${compact.slice(6, 8)}`
-    : /^\d{4}-\d{2}-\d{2}$/.test(compact)
-      ? compact
+  const raw = String(slug || "").trim();
+  const compact = raw.split("-")[0];
+  const candidate = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+    ? raw
+    : /^\d{8}$/.test(compact)
+      ? `${compact.slice(0, 4)}-${compact.slice(4, 6)}-${compact.slice(6, 8)}`
       : "";
   if (candidate) {
     const parsed = new Date(`${candidate}T00:00:00.000Z`);

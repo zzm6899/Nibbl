@@ -11,16 +11,31 @@
       <section class="hero launch">
         <div class="hero-copy">
           <div class="mark logo-mark" aria-hidden="true"><span class="cup-face"></span></div>
+          <p class="eyebrow">Food + drink diary</p>
           <h1>Nibbl</h1>
-          <p>A cute food and drink diary for saving cafe photos, background-removed cutouts, caffeine notes, and shared days with friends.</p>
+          <p>Save cafe photos, cut out the background, tag friends, and keep every food or drink moment on a soft little calendar.</p>
           <div class="actions">
-            <a class="button" href="#how-it-works">How it works</a>
-            <a class="button secondary" href="#privacy">Sharing privacy</a>
+            <a id="open-app" class="button" href="intent://nibbl.z2hs.au/#Intent;scheme=https;package=au.z2hs.nibbl;end">Open in Nibbl</a>
+            <a id="install-app" class="button secondary" href="https://play.google.com/store/apps/details?id=au.z2hs.nibbl">Install app</a>
           </div>
-          <p id="invite" class="invite" hidden>Open this link on your phone after installing Nibbl.</p>
+          <div id="invite" class="invite-card" hidden>
+            <span id="invite-kicker">Friend profile</span>
+            <strong id="invite-title">Open this link in Nibbl</strong>
+            <p id="invite-copy">Install Nibbl, then reopen this link to add the friend.</p>
+            <button id="copy-tag" type="button" hidden>Copy friend tag</button>
+          </div>
         </div>
         <div class="phone-card" aria-label="Nibbl preview">
           <div class="phone-top"></div>
+          <div class="phone-title">
+            <span>Today</span>
+            <strong>3 saves</strong>
+          </div>
+          <div class="photo-stack" aria-hidden="true">
+            <span class="photo-item matcha"></span>
+            <span class="photo-item berry"></span>
+            <span class="photo-item toast"></span>
+          </div>
           <div class="mini-month">
             <strong>May</strong>
             <span>food + drink diary</span>
@@ -68,7 +83,7 @@
           <h2>Want to add your own photos?</h2>
           <p>Install Nibbl, save food and drink photos, then share your profile or a public day link with friends.</p>
         </div>
-        <a class="button" href="/">Install now</a>
+        <a class="button" href="https://play.google.com/store/apps/details?id=au.z2hs.nibbl">Install now</a>
       </section>
 
       <footer>
@@ -80,12 +95,32 @@
       const path = window.location.pathname;
       const params = new URLSearchParams(window.location.search);
       const invite = document.getElementById("invite");
+      const inviteKicker = document.getElementById("invite-kicker");
+      const inviteTitle = document.getElementById("invite-title");
+      const inviteCopy = document.getElementById("invite-copy");
+      const openApp = document.getElementById("open-app");
+      const copyTag = document.getElementById("copy-tag");
+      const currentUrl = window.location.href;
+      const intentUrl = `intent://${window.location.host}${window.location.pathname}${window.location.search}#Intent;scheme=${window.location.protocol.replace(":", "")};package=au.z2hs.nibbl;S.browser_fallback_url=${encodeURIComponent("https://play.google.com/store/apps/details?id=au.z2hs.nibbl")};end`;
+      openApp.href = intentUrl;
       if (params.has("friend") || params.has("crew")) {
         const name = params.get("name") || "this friend";
-        invite.textContent = `Friend profile for ${name}. Install Nibbl, then open this link on your phone to add them.`;
+        const tag = (params.get("friend") || params.get("crew") || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+        inviteKicker.textContent = "Friend profile";
+        inviteTitle.textContent = `${name} shared their Nibbl`;
+        inviteCopy.textContent = tag
+          ? `Open in Nibbl to add @${tag}. If you install first, come back to this link or add @${tag} manually.`
+          : "Open in Nibbl to add this friend. If you install first, come back to this link.";
+        if (tag) {
+          copyTag.hidden = false;
+          copyTag.textContent = `Copy @${tag}`;
+          copyTag.addEventListener("click", () => navigator.clipboard?.writeText(`@${tag}`));
+        }
         invite.hidden = false;
       } else if (path.startsWith("/i/") || params.has("i") || params.has("s") || params.has("invite")) {
-        invite.textContent = "Public day link detected. If this page did not open the shared diary, ask the sender to create a fresh link.";
+        inviteKicker.textContent = "Shared day";
+        inviteTitle.textContent = "Open this diary day";
+        inviteCopy.textContent = "Open in Nibbl if the app is installed. Public day pages show synced logs when the sender's server is online.";
         invite.hidden = false;
       }
 

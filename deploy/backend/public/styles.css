@@ -1,8 +1,8 @@
 :root {
   color-scheme: light;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #fff8f5;
-  color: #322d2a;
+  background: #fffaf2;
+  color: #332d28;
 }
 
 * { box-sizing: border-box; }
@@ -11,14 +11,15 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    linear-gradient(180deg, rgba(255,248,245,.96), rgba(255,232,229,.92)),
-    repeating-linear-gradient(90deg, rgba(216,239,241,.32) 0 140px, rgba(255,240,184,.28) 140px 280px, rgba(220,236,199,.3) 280px 420px);
+    radial-gradient(circle at 12% 12%, rgba(255,214,216,.68), transparent 30%),
+    radial-gradient(circle at 88% 18%, rgba(216,239,241,.72), transparent 28%),
+    linear-gradient(180deg, #fffaf2 0%, #fff0ec 52%, #edf5dd 100%);
 }
 
 main {
   width: min(1120px, calc(100vw - 32px));
   margin: 0 auto;
-  padding: 34px 0 30px;
+  padding: 28px 0 30px;
 }
 
 .hero {
@@ -31,8 +32,8 @@ main {
 .hero.launch {
   grid-template-columns: minmax(0, 1.1fr) minmax(280px, .72fr);
   align-items: center;
-  gap: 34px;
-  min-height: 68vh;
+  gap: 42px;
+  min-height: 72vh;
 }
 
 .hero.compact {
@@ -41,7 +42,7 @@ main {
 
 .hero-copy {
   display: grid;
-  gap: 18px;
+  gap: 16px;
 }
 
 .mark {
@@ -113,9 +114,21 @@ h1, h2, p {
   margin: 0;
 }
 
+.eyebrow {
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #fffdf8;
+  color: #e87979;
+  font-size: 14px;
+  font-weight: 950;
+  box-shadow: inset 0 0 0 2px rgba(232,121,121,.18);
+}
+
 h1 {
-  font-size: clamp(56px, 12vw, 124px);
-  line-height: .9;
+  font-size: clamp(58px, 11vw, 118px);
+  line-height: .88;
   letter-spacing: 0;
   color: #2b075f;
 }
@@ -129,8 +142,8 @@ h2 {
 p {
   max-width: 740px;
   font-size: clamp(17px, 2.1vw, 23px);
-  line-height: 1.55;
-  color: #5f7656;
+  line-height: 1.48;
+  color: #5f6554;
 }
 
 .actions {
@@ -142,8 +155,8 @@ p {
 a.button, button {
   width: fit-content;
   border: 0;
-  border-radius: 14px;
-  padding: 13px 18px;
+  border-radius: 999px;
+  padding: 14px 20px;
   background: #2b075f;
   color: #fff;
   font: inherit;
@@ -152,19 +165,45 @@ a.button, button {
   cursor: pointer;
 }
 
-a.button.secondary {
+a.button.secondary, button.secondary {
   background: #fffdf8;
   color: #2b075f;
   box-shadow: inset 0 0 0 2px #eaded6;
 }
 
-.invite {
+.invite-card {
   width: min(640px, 100%);
-  padding: 16px 18px;
-  border-radius: 16px;
-  background: #fff0b8;
-  color: #4a3b12;
-  font-weight: 850;
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border-radius: 22px;
+  background: rgba(255,253,248,.92);
+  box-shadow: 0 18px 48px rgba(122,87,65,.14);
+}
+
+.invite-card span {
+  width: fit-content;
+  color: #e87979;
+  font-size: 13px;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.invite-card strong {
+  color: #2b075f;
+  font-size: 24px;
+  line-height: 1.05;
+}
+
+.invite-card p {
+  font-size: 16px;
+}
+
+.invite-card button {
+  margin-top: 4px;
+  background: #eaf4d8;
+  color: #35562c;
 }
 
 .install-strip {
@@ -184,14 +223,15 @@ a.button.secondary {
 }
 
 .phone-card {
-  min-height: 520px;
-  border-radius: 34px;
-  background: rgba(255,253,248,.9);
-  box-shadow: 0 28px 70px rgba(122,87,65,.16);
+  min-height: 560px;
+  border-radius: 36px;
+  background: rgba(255,253,248,.94);
+  box-shadow: 0 30px 80px rgba(122,87,65,.18);
   padding: 26px;
   display: grid;
   align-content: start;
-  gap: 24px;
+  gap: 18px;
+  border: 8px solid rgba(255,255,255,.7);
 }
 
 .phone-top {
@@ -202,13 +242,93 @@ a.button.secondary {
   justify-self: center;
 }
 
+.phone-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #5f6554;
+  font-weight: 850;
+}
+
+.phone-title strong {
+  color: #e87979;
+}
+
+.photo-stack {
+  position: relative;
+  min-height: 150px;
+}
+
+.photo-item {
+  position: absolute;
+  display: block;
+  width: 122px;
+  height: 122px;
+  border-radius: 30px;
+  background: #eaf4d8;
+  box-shadow: 0 18px 34px rgba(122,87,65,.13);
+}
+
+.photo-item::before,
+.photo-item::after {
+  content: "";
+  position: absolute;
+}
+
+.photo-item.matcha {
+  left: 5%;
+  top: 16px;
+  background: #dcecc7;
+  transform: rotate(-8deg);
+}
+
+.photo-item.matcha::before {
+  inset: 25px 31px 18px;
+  border-radius: 14px 14px 22px 22px;
+  background: linear-gradient(#fffdf8 0 32%, #6f9a63 32% 46%, #9fcf8f 46%);
+}
+
+.photo-item.berry {
+  left: 34%;
+  top: 0;
+  background: #ffd6d8;
+  transform: rotate(5deg);
+}
+
+.photo-item.berry::before {
+  width: 54px;
+  height: 54px;
+  left: 34px;
+  top: 34px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 38% 38%, #fff 0 14%, #e87979 15% 100%);
+}
+
+.photo-item.toast {
+  right: 4%;
+  top: 24px;
+  background: #fff0b8;
+  transform: rotate(8deg);
+}
+
+.photo-item.toast::before {
+  width: 70px;
+  height: 58px;
+  left: 26px;
+  top: 34px;
+  border-radius: 22px 22px 16px 16px;
+  background: #d99b58;
+  box-shadow: inset 0 -8px 0 rgba(115,65,28,.12);
+}
+
 .mini-month {
   display: grid;
   gap: 10px;
 }
 
 .mini-month strong {
-  font-size: 42px;
+  font-size: 38px;
   color: #302a28;
 }
 
@@ -251,9 +371,9 @@ a.button.secondary {
 }
 
 .stat, .card, .panel {
-  border-radius: 18px;
+  border-radius: 24px;
   background: rgba(255,253,248,.88);
-  padding: 18px;
+  padding: 20px;
   box-shadow: 0 14px 38px rgba(122,87,65,.11);
 }
 
