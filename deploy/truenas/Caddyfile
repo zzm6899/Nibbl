@@ -1,0 +1,7 @@
+nibbl.z2hs.au {
+  reverse_proxy 172.20.20.251:5100
+}
+
+api.nibbl.z2hs.au {
+  reverse_proxy 172.20.20.251:5100
+}

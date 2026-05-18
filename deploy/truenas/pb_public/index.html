@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nibbl</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #fff7ee;
+        color: #302a28;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(circle at 20% 15%, #e7f0d5 0 20%, transparent 21%),
+          radial-gradient(circle at 85% 25%, #ffe6b8 0 18%, transparent 19%),
+          linear-gradient(180deg, #fff7ee, #ffdfdc);
+      }
+      main {
+        width: min(680px, calc(100vw - 32px));
+        border-radius: 28px;
+        background: rgba(255, 253, 248, 0.88);
+        padding: 32px;
+        box-shadow: 0 22px 70px rgba(122, 87, 65, 0.18);
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: clamp(48px, 10vw, 86px);
+        line-height: 0.95;
+        color: #2b075f;
+      }
+      p {
+        font-size: 18px;
+        line-height: 1.6;
+        color: #6f9a63;
+      }
+      a {
+        color: #2b075f;
+        font-weight: 800;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Nibbl</h1>
+      <p>A cute self-hosted food and drink diary. Backend admin lives at <a href="https://api.nibbl.z2hs.au/_/">api.nibbl.z2hs.au/_/</a>.</p>
+    </main>
+  </body>
+</html>

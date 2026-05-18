@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844" viewBox="0 0 390 844">
+  <rect width="390" height="844" fill="#fff8f0"/>
+  <text x="24" y="54" fill="#302c29" font-family="Arial, sans-serif" font-size="26" font-weight="700">Sips &amp; Snacks</text>
+  <text x="24" y="79" fill="#5f7f52" font-family="Arial, sans-serif" font-size="14">May 2026</text>
+  <circle cx="319" cy="55" r="19" fill="#fff2e2"/>
+  <path d="M324 45l-10 10 10 10" fill="none" stroke="#5f7f52" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="365" cy="55" r="19" fill="#fff2e2"/>
+  <path d="M360 45l10 10-10 10" fill="none" stroke="#5f7f52" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <g transform="translate(24 102)">
+    <rect x="0" y="0" width="342" height="42" rx="21" fill="#f2e7d6"/>
+    <rect x="4" y="4" width="110" height="34" rx="17" fill="#5f7f52"/>
+    <text x="36" y="26" fill="#ffffff" font-family="Arial, sans-serif" font-size="13" font-weight="700">Month</text>
+    <text x="146" y="26" fill="#5f7f52" font-family="Arial, sans-serif" font-size="13" font-weight="700">Week</text>
+    <text x="260" y="26" fill="#5f7f52" font-family="Arial, sans-serif" font-size="13" font-weight="700">Day</text>
+  </g>
+
+  <g transform="translate(24 176)" font-family="Arial, sans-serif">
+    <g fill="#5f7f52" font-size="12" font-weight="700">
+      <text x="5" y="0">Sun</text><text x="54" y="0">Mon</text><text x="103" y="0">Tue</text><text x="152" y="0">Wed</text><text x="201" y="0">Thu</text><text x="250" y="0">Fri</text><text x="299" y="0">Sat</text>
+    </g>
+    <g transform="translate(0 18)">
+      <g fill="#fffdf8" stroke="#f0dfca">
+        <rect x="0" y="0" width="43" height="62" rx="8"/><rect x="49" y="0" width="43" height="62" rx="8"/><rect x="98" y="0" width="43" height="62" rx="8"/><rect x="147" y="0" width="43" height="62" rx="8"/><rect x="196" y="0" width="43" height="62" rx="8"/><rect x="245" y="0" width="43" height="62" rx="8"/><rect x="294" y="0" width="43" height="62" rx="8"/>
+        <rect x="0" y="70" width="43" height="62" rx="8"/><rect x="49" y="70" width="43" height="62" rx="8"/><rect x="98" y="70" width="43" height="62" rx="8"/><rect x="147" y="70" width="43" height="62" rx="8"/><rect x="196" y="70" width="43" height="62" rx="8"/><rect x="245" y="70" width="43" height="62" rx="8"/><rect x="294" y="70" width="43" height="62" rx="8"/>
+        <rect x="0" y="140" width="43" height="62" rx="8"/><rect x="49" y="140" width="43" height="62" rx="8"/><rect x="98" y="140" width="43" height="62" rx="8"/><rect x="147" y="140" width="43" height="62" rx="8"/><rect x="196" y="140" width="43" height="62" rx="8"/><rect x="245" y="140" width="43" height="62" rx="8"/><rect x="294" y="140" width="43" height="62" rx="8"/>
+        <rect x="0" y="210" width="43" height="62" rx="8"/><rect x="49" y="210" width="43" height="62" rx="8"/><rect x="98" y="210" width="43" height="62" rx="8"/><rect x="147" y="210" width="43" height="62" rx="8"/><rect x="196" y="210" width="43" height="62" rx="8"/><rect x="245" y="210" width="43" height="62" rx="8"/><rect x="294" y="210" width="43" height="62" rx="8"/>
+      </g>
+      <g fill="#302c29" font-size="13" font-weight="700">
+        <text x="12" y="21">3</text><text x="61" y="21">4</text><text x="110" y="21">5</text><text x="159" y="21">6</text><text x="208" y="21">7</text><text x="257" y="21">8</text><text x="303" y="21">9</text>
+        <text x="9" y="91">10</text><text x="58" y="91">11</text><text x="107" y="91">12</text><text x="156" y="91">13</text><text x="205" y="91">14</text><text x="254" y="91">15</text><text x="303" y="91">16</text>
+        <text x="9" y="161">17</text><text x="58" y="161">18</text><text x="107" y="161">19</text><text x="156" y="161">20</text><text x="205" y="161">21</text><text x="254" y="161">22</text><text x="303" y="161">23</text>
+        <text x="9" y="231">24</text><text x="58" y="231">25</text><text x="107" y="231">26</text><text x="156" y="231">27</text><text x="205" y="231">28</text><text x="254" y="231">29</text><text x="303" y="231">30</text>
+      </g>
+      <g>
+        <circle cx="213" cy="119" r="12" fill="#86a873"/><rect x="207" y="107" width="12" height="18" rx="4" fill="#f4d6a4"/><path d="M220 111c8 0 8 12 0 12" fill="none" stroke="#d56b57" stroke-width="4"/>
+        <circle cx="229" cy="119" r="12" fill="#d56b57"/><path d="M221 119c0-9 16-9 16 0 0 8-8 12-8 12s-8-4-8-12z" fill="#f4d6a4"/>
+        <circle cx="114" cy="189" r="12" fill="#86a873"/><rect x="108" y="177" width="12" height="18" rx="4" fill="#eef2da"/><circle cx="119" cy="183" r="3" fill="#5f7f52"/>
+        <circle cx="163" cy="259" r="12" fill="#e7b75f"/><path d="M155 259c0-8 16-8 16 0 0 8-16 8-16 0z" fill="#fff2e2"/>
+      </g>
+    </g>
+  </g>
+
+  <g transform="translate(24 520)">
+    <text x="0" y="0" fill="#302c29" font-family="Arial, sans-serif" font-size="17" font-weight="700">Today</text>
+    <rect x="0" y="18" width="342" height="94" rx="8" fill="#fffdf8" stroke="#f0dfca"/>
+    <circle cx="48" cy="65" r="31" fill="#fff8f0"/>
+    <rect x="38" y="43" width="20" height="34" rx="7" fill="#86a873"/>
+    <rect x="41" y="50" width="14" height="6" rx="2" fill="#f4d6a4"/>
+    <path d="M59 50c16 0 16 21 0 21" fill="none" stroke="#d56b57" stroke-width="6"/>
+    <text x="92" y="51" fill="#302c29" font-family="Arial, sans-serif" font-size="16" font-weight="700">Iced matcha</text>
+    <text x="92" y="74" fill="#302c29" font-family="Arial, sans-serif" font-size="13">Matcha • 70mg caffeine</text>
+    <text x="92" y="96" fill="#5f7f52" font-family="Arial, sans-serif" font-size="13">Little Green Cafe • Newtown</text>
+  </g>
+
+  <circle cx="290" cy="780" r="25" fill="#5f7f52"/>
+  <path d="M278 780h24M290 768v24" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="350" cy="780" r="25" fill="#5f7f52"/>
+  <path d="M338 772h24v18h-24zM345 768h10" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

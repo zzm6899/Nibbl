@@ -1,0 +1,17 @@
+services:
+  nibbl-pocketbase:
+    image: ghcr.io/zzm6899/nibbl-backend:latest
+    container_name: nibbl-pocketbase
+    restart: unless-stopped
+    environment:
+      TZ: Australia/Sydney
+    ports:
+      - "5100:8090"
+    volumes:
+      - ./pb_data:/pb_data
+      - ./pb_public:/pb_public
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8090/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
