@@ -22,7 +22,7 @@
         <div class="stat"><strong id="categories">-</strong><span>categories</span></div>
       </section>
 
-      <section class="panel" style="margin-top: 14px">
+      <section class="panel admin-table-panel" style="margin-top: 14px">
         <strong>Recent uploads</strong>
         <table>
           <thead>
@@ -35,14 +35,14 @@
     <script>
       async function load() {
         const [stats, logs] = await Promise.all([
-          fetch("/api/admin/stats").then((r) => r.json()),
-          fetch("/api/admin/logs").then((r) => r.json()),
+          fetchJson("/api/admin/stats"),
+          fetchJson("/api/admin/logs"),
         ]);
         entries.textContent = stats.entries ?? 0;
         cafes.textContent = stats.cafes ?? 0;
         friends.textContent = stats.friends ?? 0;
         categories.textContent = stats.categories ?? 0;
-        document.getElementById("logs").innerHTML = logs.map((log) => `
+        document.getElementById("logs").innerHTML = (Array.isArray(logs) ? logs : []).map((log) => `
           <tr>
             <td>${new Date(log.timestamp).toLocaleString()}</td>
             <td>${escapeHtml(log.ownerName || log.ownerTag || "Unknown")}</td>
@@ -51,6 +51,16 @@
             <td>${escapeHtml(log.category || "")}</td>
           </tr>
         `).join("");
+      }
+
+      async function fetchJson(url) {
+        const response = await fetch(url);
+        if (!response.ok) {
+          if (response.status === 401) throw new Error("Admin password required. Refresh and sign in when your browser prompts.");
+          if (response.status === 503) throw new Error("Admin password is not set on the server.");
+          throw new Error(`Request failed: ${response.status}`);
+        }
+        return response.json();
       }
 
       function escapeHtml(value) {

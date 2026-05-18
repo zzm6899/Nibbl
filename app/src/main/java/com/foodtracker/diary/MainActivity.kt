@@ -202,6 +202,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
     var pendingAvatarPerson by remember { mutableStateOf<CafeCrewPerson?>(null) }
     var editFriend by remember { mutableStateOf<CafeCrewPerson?>(null) }
     var handledDeepLinkUrl by remember { mutableStateOf<String?>(null) }
+    var handledSharedImageUri by remember { mutableStateOf<String?>(null) }
     val filteredLogs = logs.filter { log ->
         (selectedFriend == null || log.friendNames.contains(selectedFriend)) &&
             (selectedCategory == null || log.category == selectedCategory)
@@ -246,10 +247,11 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
         backendDrinkReporter.submit(registered.shareHost, log, registered)
     }
 
-    suspend fun createPublicDayShare(date: LocalDate): String {
+    suspend fun createPublicDayShare(date: LocalDate): String? {
         val registered = ensureRegisteredSettings()
-        return BackendShareClient.createDayShare(settingsRepository, registered, date)
-            ?: ShareLinkTokenHelper.createDayShareLink(date, registered).url
+        return BackendShareClient.createDayShare(settingsRepository, registered, date).also {
+            error = if (it == null) "Could not create a public day link. Check your server connection and try again." else null
+        }
     }
 
     suspend fun addFriendFromInviteOrTag(input: String) {
@@ -258,7 +260,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
             error = "Friend not found. Ask them to share their Nibbl friend link or username."
             return
         }
-        if (resolved.tag == settings.username || resolved.displayName.equals(settings.displayName, ignoreCase = true)) {
+        if (resolved.tag == settings.username) {
             error = "Your profile is edited in Settings, not Friends."
             return
         }
@@ -358,6 +360,9 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
 
     LaunchedEffect(sharedImageUri) {
         val uri = sharedImageUri ?: return@LaunchedEffect
+        val uriKey = uri.toString()
+        if (uriKey == handledSharedImageUri) return@LaunchedEffect
+        handledSharedImageUri = uriKey
         selectedDate = LocalDate.now()
         mode = CalendarMode.Day
         section = AppSection.Diary

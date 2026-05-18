@@ -29,6 +29,7 @@ data class CrewInviteToken(
 
 object ShareLinkTokenHelper {
     const val DEFAULT_SHARE_HOST = "https://nibbl.z2hs.au"
+    const val DEFAULT_API_HOST = "https://api.nibbl.z2hs.au"
 
     private const val TOKEN_VERSION = 1
     private val TOKEN_FLAG = Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
@@ -189,6 +190,11 @@ object ShareLinkTokenHelper {
             .toString()
             .trimEnd('/')
             .ifBlank { DEFAULT_SHARE_HOST }
+    }
+
+    fun apiHostFor(shareHost: String): String {
+        val normalized = normalizeShareHost(shareHost)
+        return if (normalized == DEFAULT_SHARE_HOST) DEFAULT_API_HOST else normalized
     }
 
     private fun createDayUrl(date: LocalDate, shareHost: String, token: String): String {

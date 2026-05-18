@@ -21,6 +21,8 @@ const pool = new pg.Pool({ connectionString: databaseUrl });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } });
 let dbReady = false;
 let lastBootstrapError = "";
+let objectReady = objectMode !== "s3";
+let lastObjectError = "";
 const rateBuckets = new Map();
 const s3 = objectMode === "s3"
   ? new S3Client({
@@ -42,30 +44,38 @@ app.use(securityHeaders);
 app.use(rateLimit);
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: false }));
+
+app.get(["/admin", "/admin.html"], requireAdmin, (_req, res) => {
+  res.sendFile(path.join(publicDir, "admin.html"));
+});
+
 app.use(express.static(publicDir, { extensions: ["html"], index: false }));
 
 app.get("/api/health", (_req, res) => res.json({
-  status: dbReady ? "healthy" : "starting",
+  status: dbReady && objectReady ? "healthy" : dbReady ? "degraded" : "starting",
   backend: "postgres",
   database: dbReady ? "ready" : "waiting",
-  error: dbReady ? undefined : lastBootstrapError || undefined,
+  objectStorage: objectReady ? "ready" : "waiting",
+  error: process.env.NIBBL_HEALTH_DETAILS === "true" && !dbReady ? lastBootstrapError || undefined : undefined,
+  objectError: process.env.NIBBL_HEALTH_DETAILS === "true" && !objectReady ? lastObjectError || undefined : undefined,
 }));
 
 app.post("/api/nibbl/devices/register", async (req, res, next) => {
   try {
-    const ownerId = text(req.body.ownerId, 64) || crypto.randomUUID();
+    const requestedOwnerId = text(req.body.ownerId, 64);
+    const ownerId = requestedOwnerId || crypto.randomUUID();
     const ownerName = text(req.body.ownerName, 48) || "Me";
     const ownerTag = friendTag(req.body.ownerTag);
+    if (requestedOwnerId) {
+      const { rows } = await pool.query("select 1 from devices where owner_id = $1 limit 1", [requestedOwnerId]);
+      if (rows.length) return res.status(409).json({ error: "owner_exists" });
+    }
+    await assertFriendTagAvailable(ownerTag, ownerId);
     const token = crypto.randomBytes(32).toString("base64url");
     const tokenHash = tokenHashFor(token);
     await pool.query(
       `insert into devices (owner_id, owner_name, owner_tag, token_hash)
-       values ($1,$2,$3,$4)
-       on conflict (owner_id) do update set
-        owner_name = excluded.owner_name,
-        owner_tag = excluded.owner_tag,
-        token_hash = excluded.token_hash,
-        updated_at = now()`,
+       values ($1,$2,$3,$4)`,
       [ownerId, ownerName, ownerTag, tokenHash],
     );
     res.status(201).json({ ownerId, apiToken: token });
@@ -178,6 +188,7 @@ app.post("/api/nibbl/profile", requireDeviceAuth, async (req, res, next) => {
     if (!ownerId) return res.status(400).json({ error: "ownerId_required" });
     const ownerName = text(req.body.ownerName, 48);
     const ownerTag = friendTag(req.body.ownerTag);
+    await assertFriendTagAvailable(ownerTag, ownerId);
     const [logResult] = await Promise.all([
       pool.query("update logs set owner_name = $1, owner_tag = $2 where owner_id = $3", [ownerName, ownerTag, ownerId]),
       pool.query("update devices set owner_name = $1, owner_tag = $2, updated_at = now() where owner_id = $3", [ownerName, ownerTag, ownerId]),
@@ -232,6 +243,9 @@ app.get("/api/admin/logs", requireAdmin, async (req, res, next) => {
 
 app.get("/api/nibbl/day/:date", async (req, res, next) => {
   try {
+    if (process.env.NIBBL_PUBLIC_DAY_API !== "true") {
+      return res.status(404).json({ error: "not_found" });
+    }
     res.json(await dayPayload(req.params.date));
   } catch (error) {
     next(error);
@@ -248,8 +262,7 @@ app.get("/objects/*", async (req, res, next) => {
 
 app.get(["/i/:slug", "/share/:slug"], async (req, res, next) => {
   try {
-    const date = dateFromSlug(req.params.slug);
-    res.send(renderSharePage(await safeDayPayload(date), date));
+    res.redirect(302, "/");
   } catch (error) {
     next(error);
   }
@@ -258,7 +271,7 @@ app.get(["/i/:slug", "/share/:slug"], async (req, res, next) => {
 app.get("/s/:token", async (req, res, next) => {
   try {
     const share = await shareByToken(req.params.token);
-    res.send(renderSharePage(await safeDayPayload(share.log_date), share.log_date, share));
+    res.send(renderSharePage(await safeSharedDayPayload(share), share.log_date, share));
   } catch (error) {
     next(error);
   }
@@ -268,11 +281,10 @@ app.get("/", async (req, res, next) => {
   try {
     if (req.query.s) {
       const share = await shareByToken(String(req.query.s));
-      return res.send(renderSharePage(await safeDayPayload(share.log_date), share.log_date, share));
+      return res.send(renderSharePage(await safeSharedDayPayload(share), share.log_date, share));
     }
     if (req.query.i || req.query.invite || req.query.token) {
-      const date = dateFromSlug(String(req.query.i || req.query.invite || req.query.token));
-      return res.send(renderSharePage(await safeDayPayload(date), date));
+      return res.sendFile(path.join(publicDir, "index.html"));
     }
     res.sendFile(path.join(publicDir, "index.html"));
   } catch (error) {
@@ -307,11 +319,6 @@ async function bootstrapWithRetry() {
 
 async function bootstrap() {
   await fs.mkdir(localObjectDir, { recursive: true });
-  if (s3) {
-    await s3.send(new CreateBucketCommand({ Bucket: s3Bucket })).catch((error) => {
-      if (!["BucketAlreadyOwnedByYou", "BucketAlreadyExists"].includes(error.name)) throw error;
-    });
-  }
   await pool.query(`
     create extension if not exists pgcrypto;
     create table if not exists logs (
@@ -361,6 +368,26 @@ async function bootstrap() {
     );
     create index if not exists day_shares_date_idx on day_shares(log_date);
   `);
+  await ensureObjectStorage();
+}
+
+async function ensureObjectStorage() {
+  if (!s3) {
+    objectReady = true;
+    lastObjectError = "";
+    return;
+  }
+  try {
+    await s3.send(new CreateBucketCommand({ Bucket: s3Bucket })).catch((error) => {
+      if (!["BucketAlreadyOwnedByYou", "BucketAlreadyExists"].includes(error.name)) throw error;
+    });
+    objectReady = true;
+    lastObjectError = "";
+  } catch (error) {
+    objectReady = false;
+    lastObjectError = error.message || "object_storage_failed";
+    console.error("Nibbl object storage is not ready:", lastObjectError);
+  }
 }
 
 async function safeDayPayload(date) {
@@ -368,6 +395,14 @@ async function safeDayPayload(date) {
     return await dayPayload(date);
   } catch {
     return { date, logs: [] };
+  }
+}
+
+async function safeSharedDayPayload(share) {
+  try {
+    return await dayPayload(share.log_date, share.owner_id);
+  } catch {
+    return { date: share.log_date, logs: [] };
   }
 }
 
@@ -397,14 +432,17 @@ async function readStats(includeRecent = false) {
   return stats;
 }
 
-async function dayPayload(date) {
+async function dayPayload(date, ownerId = null) {
+  const normalizedDate = dateFromSlug(date);
+  const ownerClause = ownerId ? "and owner_id = $2" : "";
+  const params = ownerId ? [normalizedDate, ownerId] : [normalizedDate];
   const { rows } = await pool.query(
     `select id, owner_name, owner_tag, timestamp_ms, log_date, title, category, caffeine_mg,
       cafe, location_name, friend_names, image_key, created_at
-     from logs where log_date = $1 order by timestamp_ms asc`,
-    [date],
+     from logs where log_date = $1 ${ownerClause} order by timestamp_ms asc`,
+    params,
   );
-  return { date, logs: rows.map(rowToLog) };
+  return { date: normalizedDate, logs: rows.map(rowToLog) };
 }
 
 async function shareByToken(token) {
@@ -424,6 +462,19 @@ async function shareByToken(token) {
     ...rows[0],
     log_date: normalizeDateValue(rows[0].log_date),
   };
+}
+
+async function assertFriendTagAvailable(ownerTag, ownerId) {
+  if (!ownerTag) return;
+  const { rows } = await pool.query(
+    "select owner_id from devices where owner_tag = $1 and owner_id <> $2 limit 1",
+    [ownerTag, ownerId],
+  );
+  if (rows.length) {
+    const error = new Error("username_taken");
+    error.status = 409;
+    throw error;
+  }
 }
 
 function rowToLog(row) {
@@ -599,9 +650,20 @@ function friendTag(value) {
 
 function dateFromSlug(slug) {
   const compact = String(slug || "").split("-")[0];
-  if (/^\d{8}$/.test(compact)) return `${compact.slice(0, 4)}-${compact.slice(4, 6)}-${compact.slice(6, 8)}`;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(compact)) return compact;
-  return new Date().toISOString().slice(0, 10);
+  const candidate = /^\d{8}$/.test(compact)
+    ? `${compact.slice(0, 4)}-${compact.slice(4, 6)}-${compact.slice(6, 8)}`
+    : /^\d{4}-\d{2}-\d{2}$/.test(compact)
+      ? compact
+      : "";
+  if (candidate) {
+    const parsed = new Date(`${candidate}T00:00:00.000Z`);
+    if (!Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === candidate) {
+      return candidate;
+    }
+  }
+  const error = new Error("invalid_date");
+  error.status = 400;
+  throw error;
 }
 
 function normalizeDateValue(value) {

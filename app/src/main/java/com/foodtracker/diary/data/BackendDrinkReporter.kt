@@ -15,7 +15,7 @@ class BackendDrinkReporter {
         if (apiToken.isBlank()) return@withContext
 
         runCatching {
-            val endpoint = "${ShareLinkTokenHelper.normalizeShareHost(shareHost)}/api/nibbl/ingest"
+            val endpoint = "${ShareLinkTokenHelper.apiHostFor(shareHost)}/api/nibbl/ingest"
             val boundary = "NibblBoundary${System.currentTimeMillis()}"
             val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"

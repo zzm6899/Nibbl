@@ -13,7 +13,7 @@ object BackendShareClient {
         if (registered.apiToken.isBlank()) return@withContext null
 
         runCatching {
-            val host = ShareLinkTokenHelper.normalizeShareHost(registered.shareHost)
+            val host = ShareLinkTokenHelper.apiHostFor(registered.shareHost)
             val endpoint = "$host/api/nibbl/shares/day"
             val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
@@ -31,7 +31,7 @@ object BackendShareClient {
             val body = connection.inputStream.bufferedReader().use { it.readText() }
             connection.disconnect()
             val path = JSONObject(body).optString("url", "")
-            if (path.startsWith("/")) "$host$path" else path.takeIf { it.isNotBlank() }
+            if (path.startsWith("/")) "${ShareLinkTokenHelper.normalizeShareHost(registered.shareHost)}$path" else path.takeIf { it.isNotBlank() }
         }.getOrNull()
     }
 }

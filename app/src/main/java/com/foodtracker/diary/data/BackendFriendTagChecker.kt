@@ -19,7 +19,7 @@ object BackendFriendTagChecker {
 
         runCatching {
             val encoded = URLEncoder.encode(cleanTag, Charsets.UTF_8.name())
-            val endpoint = "${ShareLinkTokenHelper.normalizeShareHost(shareHost)}/api/nibbl/friends/available?tag=$encoded"
+            val endpoint = "${ShareLinkTokenHelper.apiHostFor(shareHost)}/api/nibbl/friends/available?tag=$encoded"
             val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 5_000
@@ -28,7 +28,7 @@ object BackendFriendTagChecker {
             val body = connection.inputStream.bufferedReader().use { it.readText() }
             connection.disconnect()
             JSONObject(body).optBoolean("available", true)
-        }.getOrDefault(true)
+        }.getOrDefault(false)
     }
 
     suspend fun resolve(shareHost: String, tagOrUrl: String): ResolvedFriendTag? = withContext(Dispatchers.IO) {
@@ -41,7 +41,7 @@ object BackendFriendTagChecker {
 
         runCatching {
             val encoded = URLEncoder.encode(cleanTag, Charsets.UTF_8.name())
-            val endpoint = "${ShareLinkTokenHelper.normalizeShareHost(shareHost)}/api/nibbl/friends/resolve?tag=$encoded"
+            val endpoint = "${ShareLinkTokenHelper.apiHostFor(shareHost)}/api/nibbl/friends/resolve?tag=$encoded"
             val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 5_000
@@ -66,7 +66,7 @@ object BackendFriendTagChecker {
         if (settings.apiToken.isBlank() || settings.ownerId.isBlank()) return@withContext false
 
         runCatching {
-            val endpoint = "${ShareLinkTokenHelper.normalizeShareHost(shareHost)}/api/nibbl/profile"
+            val endpoint = "${ShareLinkTokenHelper.apiHostFor(shareHost)}/api/nibbl/profile"
             val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 connectTimeout = 8_000

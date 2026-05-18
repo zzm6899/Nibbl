@@ -11,7 +11,7 @@ object BackendDeviceClient {
         if (settings.apiToken.isNotBlank()) return@withContext settings
 
         runCatching {
-            val endpoint = "${ShareLinkTokenHelper.normalizeShareHost(settings.shareHost)}/api/nibbl/devices/register"
+            val endpoint = "${ShareLinkTokenHelper.apiHostFor(settings.shareHost)}/api/nibbl/devices/register"
             val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 connectTimeout = 8_000

@@ -248,11 +248,16 @@ a.button.secondary {
 
 table {
   width: 100%;
+  min-width: 680px;
   border-collapse: collapse;
   margin-top: 16px;
   overflow: hidden;
   border-radius: 16px;
   background: rgba(255,253,248,.9);
+}
+
+.admin-table-panel {
+  overflow-x: auto;
 }
 
 th, td {
