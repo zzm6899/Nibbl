@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { CreateBucketCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import express from "express";
 import multer from "multer";
 import pg from "pg";
@@ -20,6 +20,8 @@ const s3PublicBaseUrl = (process.env.S3_PUBLIC_BASE_URL || "").replace(/\/+$/, "
 
 const pool = new pg.Pool({ connectionString: databaseUrl });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } });
+let dbReady = false;
+let lastBootstrapError = "";
 const s3 = objectMode === "s3"
   ? new S3Client({
       region: process.env.S3_REGION || "us-east-1",
@@ -34,14 +36,17 @@ const s3 = objectMode === "s3"
     })
   : null;
 
-await bootstrap();
-
 const app = express();
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(publicDir, { extensions: ["html"], index: false }));
 
-app.get("/api/health", (_req, res) => res.json({ status: "healthy", backend: "postgres" }));
+app.get("/api/health", (_req, res) => res.json({
+  status: dbReady ? "healthy" : "starting",
+  backend: "postgres",
+  database: dbReady ? "ready" : "waiting",
+  error: dbReady ? undefined : lastBootstrapError || undefined,
+}));
 
 app.post("/api/nibbl/ingest", requireIngestKey, upload.fields([
   { name: "image", maxCount: 1 },
@@ -99,7 +104,7 @@ app.get("/api/nibbl/stats", async (_req, res, next) => {
     const stats = await readStats();
     res.json({ ...stats, status: "healthy" });
   } catch (error) {
-    next(error);
+    res.json({ entries: 0, cafes: 0, friends: 0, categories: 0, status: "starting" });
   }
 });
 
@@ -172,7 +177,7 @@ app.get("/objects/*", async (req, res, next) => {
 app.get(["/i/:slug", "/share/:slug"], async (req, res, next) => {
   try {
     const date = dateFromSlug(req.params.slug);
-    res.send(renderSharePage(await dayPayload(date), date));
+    res.send(renderSharePage(await safeDayPayload(date), date));
   } catch (error) {
     next(error);
   }
@@ -182,7 +187,7 @@ app.get("/", async (req, res, next) => {
   try {
     if (req.query.i || req.query.invite || req.query.token) {
       const date = dateFromSlug(String(req.query.i || req.query.invite || req.query.token));
-      return res.send(renderSharePage(await dayPayload(date), date));
+      return res.send(renderSharePage(await safeDayPayload(date), date));
     }
     res.sendFile(path.join(publicDir, "index.html"));
   } catch (error) {
@@ -198,9 +203,30 @@ app.use((error, _req, res, _next) => {
 app.listen(port, () => {
   console.log(`Nibbl backend listening on ${port}`);
 });
+bootstrapWithRetry();
+
+async function bootstrapWithRetry() {
+  while (!dbReady) {
+    try {
+      await bootstrap();
+      dbReady = true;
+      lastBootstrapError = "";
+      console.log("Nibbl backend storage is ready");
+    } catch (error) {
+      lastBootstrapError = error.message || "bootstrap_failed";
+      console.error("Nibbl backend storage is not ready yet:", lastBootstrapError);
+      await sleep(5_000);
+    }
+  }
+}
 
 async function bootstrap() {
   await fs.mkdir(localObjectDir, { recursive: true });
+  if (s3) {
+    await s3.send(new CreateBucketCommand({ Bucket: s3Bucket })).catch((error) => {
+      if (!["BucketAlreadyOwnedByYou", "BucketAlreadyExists"].includes(error.name)) throw error;
+    });
+  }
   await pool.query(`
     create extension if not exists pgcrypto;
     create table if not exists logs (
@@ -233,6 +259,14 @@ async function bootstrap() {
       visited_at timestamptz not null default now()
     );
   `);
+}
+
+async function safeDayPayload(date) {
+  try {
+    return await dayPayload(date);
+  } catch {
+    return { date, logs: [] };
+  }
 }
 
 async function readStats(includeRecent = false) {
@@ -417,4 +451,8 @@ function escapeHtml(value) {
     '"': "&quot;",
     "'": "&#39;",
   }[char]));
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
