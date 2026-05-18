@@ -138,8 +138,35 @@ app.get("/api/nibbl/friends/available", async (req, res, next) => {
   try {
     const tag = friendTag(req.query.tag);
     if (!tag || tag.length < 3) return res.json({ tag, available: false, reason: "too_short" });
-    const { rows } = await pool.query("select 1 from logs where owner_tag = $1 limit 1", [tag]);
+    const { rows } = await pool.query(
+      `select 1 from devices where owner_tag = $1
+       union all
+       select 1 from logs where owner_tag = $1
+       limit 1`,
+      [tag],
+    );
     res.json({ tag, available: rows.length === 0 });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/nibbl/friends/resolve", async (req, res, next) => {
+  try {
+    const tag = friendTag(req.query.tag);
+    if (!tag || tag.length < 3) return res.status(400).json({ error: "tag_required" });
+    const { rows } = await pool.query(
+      `select owner_name, owner_tag from devices where owner_tag = $1
+       union all
+       select owner_name, owner_tag from logs where owner_tag = $1
+       limit 1`,
+      [tag],
+    );
+    if (!rows.length) return res.status(404).json({ error: "friend_not_found" });
+    res.json({
+      displayName: rows[0].owner_name || rows[0].owner_tag,
+      tag: rows[0].owner_tag,
+    });
   } catch (error) {
     next(error);
   }
@@ -349,7 +376,13 @@ async function readStats(includeRecent = false) {
     pool.query("select count(*)::int as entries from logs"),
     pool.query("select count(distinct category)::int as categories from logs where category <> ''"),
     pool.query("select count(distinct lower(cafe))::int as cafes from logs where cafe <> ''"),
-    pool.query("select count(distinct owner_tag)::int as friends from logs where owner_tag <> ''"),
+    pool.query(
+      `select count(distinct owner_tag)::int as friends from (
+        select owner_tag from devices where owner_tag <> ''
+        union all
+        select owner_tag from logs where owner_tag <> ''
+      ) tags`,
+    ),
   ]);
   const stats = {
     entries: counts[0]?.entries || 0,

@@ -7,6 +7,11 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
+data class ResolvedFriendTag(
+    val displayName: String,
+    val tag: String,
+)
+
 object BackendFriendTagChecker {
     suspend fun isAvailable(shareHost: String, tag: String): Boolean = withContext(Dispatchers.IO) {
         val cleanTag = tag.toFriendInviteCode()
@@ -24,6 +29,37 @@ object BackendFriendTagChecker {
             connection.disconnect()
             JSONObject(body).optBoolean("available", true)
         }.getOrDefault(true)
+    }
+
+    suspend fun resolve(shareHost: String, tagOrUrl: String): ResolvedFriendTag? = withContext(Dispatchers.IO) {
+        ShareLinkTokenHelper.parseCrewInviteUrl(tagOrUrl)?.let {
+            return@withContext ResolvedFriendTag(it.displayName, it.code)
+        }
+
+        val cleanTag = tagOrUrl.toFriendInviteCode()
+        if (cleanTag.length < 3) return@withContext null
+
+        runCatching {
+            val encoded = URLEncoder.encode(cleanTag, Charsets.UTF_8.name())
+            val endpoint = "${ShareLinkTokenHelper.normalizeShareHost(shareHost)}/api/nibbl/friends/resolve?tag=$encoded"
+            val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 5_000
+                readTimeout = 5_000
+            }
+            if (connection.responseCode !in 200..299) {
+                connection.errorStream?.close()
+                connection.disconnect()
+                return@runCatching null
+            }
+            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            connection.disconnect()
+            val json = JSONObject(body)
+            ResolvedFriendTag(
+                displayName = json.optString("displayName", cleanTag).trim().ifBlank { cleanTag },
+                tag = json.optString("tag", cleanTag).toFriendInviteCode(),
+            )
+        }.getOrNull()
     }
 
     suspend fun updateOwnerProfile(shareHost: String, settings: AppSettings): Boolean = withContext(Dispatchers.IO) {

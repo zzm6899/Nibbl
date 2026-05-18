@@ -8,20 +8,65 @@
   </head>
   <body>
     <main>
-      <section class="hero">
-        <div class="mark" aria-hidden="true">N</div>
-        <h1>Nibbl</h1>
-        <p>A cute food and drink diary for saving cafe days, drink photos, shared albums, and tiny cravings.</p>
-        <p id="invite" class="invite" hidden>Nibbl invite found. Open this link on your phone after installing the app.</p>
-        <a class="button" href="/admin.html">Open admin</a>
+      <section class="hero launch">
+        <div class="hero-copy">
+          <div class="mark" aria-hidden="true">N</div>
+          <h1>Nibbl</h1>
+          <p>A cute food and drink diary for saving cafe photos, background-removed cutouts, caffeine notes, and shared days with friends.</p>
+          <div class="actions">
+            <a class="button" href="#how-it-works">How it works</a>
+            <a class="button secondary" href="#privacy">Sharing privacy</a>
+          </div>
+          <p id="invite" class="invite" hidden>Open this link on your phone after installing Nibbl.</p>
+        </div>
+        <div class="phone-card" aria-label="Nibbl preview">
+          <div class="phone-top"></div>
+          <div class="mini-month">
+            <strong>May</strong>
+            <span>food + drink diary</span>
+            <div class="mini-grid">
+              <i></i><i></i><i></i><i></i><i></i><b>1</b><b>2</b>
+              <b>3</b><b>4</b><b>5</b><b>6</b><b>7</b><b>8</b><b>9</b>
+              <b>10</b><b>11</b><b class="today">12</b><b>13</b><b>14</b><b>15</b><b>16</b>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section class="stats" aria-label="Nibbl stats">
-        <div class="stat"><strong id="entries">-</strong><span>saved bites</span></div>
+        <div class="stat"><strong id="entries">-</strong><span>saved logs</span></div>
         <div class="stat"><strong id="cafes">-</strong><span>cafes</span></div>
-        <div class="stat"><strong id="friends">-</strong><span>friends tagged</span></div>
+        <div class="stat"><strong id="friends">-</strong><span>public usernames</span></div>
         <div class="stat"><strong id="categories">-</strong><span>food types</span></div>
       </section>
+
+      <section id="how-it-works" class="feature-grid">
+        <article class="panel">
+          <span>01</span>
+          <h2>Save the photo</h2>
+          <p>Take a photo or share one into Nibbl. The app cuts out the food or drink and places it on your calendar.</p>
+        </article>
+        <article class="panel">
+          <span>02</span>
+          <h2>Tag the day</h2>
+          <p>Add cafe, caffeine, category, and friends. Friends are added by invite link or public username.</p>
+        </article>
+        <article class="panel">
+          <span>03</span>
+          <h2>Share carefully</h2>
+          <p>A public day link shows only synced logs for that calendar date. Anyone with the link can view it.</p>
+        </article>
+      </section>
+
+      <section id="privacy" class="privacy panel">
+        <h2>What links mean</h2>
+        <p><strong>Friend links</strong> add a real Nibbl friend tag to the app. <strong>Public day links</strong> open a web page for one calendar day. They are different on purpose.</p>
+      </section>
+
+      <footer>
+        <span>Nibbl self-hosted at nibbl.z2hs.au</span>
+        <a href="/admin.html">Admin</a>
+      </footer>
     </main>
     <script>
       const path = window.location.pathname;
@@ -29,9 +74,10 @@
       const invite = document.getElementById("invite");
       if (params.has("friend") || params.has("crew")) {
         const name = params.get("name") || "this friend";
-        invite.textContent = `Friend tag invite for ${name}. Open this link on your phone to tag shared food and drink logs together.`;
+        invite.textContent = `Friend link for ${name}. Open it on your phone to add this Nibbl friend.`;
         invite.hidden = false;
-      } else if (path.startsWith("/i/") || params.has("i") || params.has("invite")) {
+      } else if (path.startsWith("/i/") || params.has("i") || params.has("s") || params.has("invite")) {
+        invite.textContent = "Public day link detected. If this page did not open the shared diary, ask the sender to create a fresh link.";
         invite.hidden = false;
       }
 

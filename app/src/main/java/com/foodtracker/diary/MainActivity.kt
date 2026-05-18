@@ -210,7 +210,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
         logs = repository.logs()
         settings = settingsRepository.settings()
         settingsLoaded = true
-        crew = crewStore.ensurePeopleForNames(logs.flatMap { it.friendNames } + settings.displayName)
+        crew = crewStore.people().filterNot { it.isOwnProfile(settings) || it.isLegacyLocalOnlyFriend() }
         categories = categoryStore.categories()
         if (selectedCategory != null && categories.none { it == selectedCategory }) {
             selectedCategory = null
@@ -249,6 +249,21 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
         val registered = ensureRegisteredSettings()
         return BackendShareClient.createDayShare(settingsRepository, registered, date)
             ?: ShareLinkTokenHelper.createDayShareLink(date, registered).url
+    }
+
+    suspend fun addFriendFromInviteOrTag(input: String) {
+        val resolved = BackendFriendTagChecker.resolve(settings.shareHost, input)
+        if (resolved == null) {
+            error = "Friend not found. Ask them to share their Nibbl friend link or username."
+            return
+        }
+        if (resolved.tag == settings.username || resolved.displayName.equals(settings.displayName, ignoreCase = true)) {
+            error = "Your profile is edited in Settings, not Friends."
+            return
+        }
+        crewStore.upsertInvite(resolved.displayName, resolved.tag)
+        error = null
+        refresh()
     }
 
     suspend fun repeatLog(log: FoodLog) {
@@ -454,8 +469,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                         crew = crew,
                         onAdd = { name ->
                             scope.launch {
-                                crewStore.upsertName(name)
-                                refresh()
+                                addFriendFromInviteOrTag(name)
                             }
                         },
                         onToggleFavorite = { person ->
@@ -543,7 +557,6 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                     )
                     repository.save(log)
                     submitLog(log)
-                    crewStore.ensurePeopleForNames(friends)
                     selectedDate = LocalDate.now()
                     pending = null
                     refresh()
@@ -587,7 +600,6 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
             onSave = { updated ->
                 scope.launch {
                     repository.update(updated)
-                    crewStore.ensurePeopleForNames(updated.friendNames)
                     editLog = null
                     refresh()
                 }
@@ -778,12 +790,12 @@ private fun CrewScreen(
     LazyColumn(contentPadding = PaddingValues(bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Text("Friends", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-            Text("Editable friends you can tag on food and drink logs.", color = MaterialTheme.colorScheme.secondary)
+            Text("Add friends from their Nibbl invite link or public username. Your own profile lives in Settings.", color = MaterialTheme.colorScheme.secondary)
         }
         item {
             Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
                 Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(name, { name = it.take(32) }, label = { Text("Person name") }, modifier = Modifier.weight(1f))
+                    OutlinedTextField(name, { name = it.take(96) }, label = { Text("Invite link or username") }, modifier = Modifier.weight(1f))
                     Button(onClick = {
                         val clean = name.trim()
                         if (clean.isNotBlank()) {
@@ -934,11 +946,11 @@ private fun SettingsScreen(
             Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.primaryContainer, tonalElevation = 1.dp) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Share a day", fontWeight = FontWeight.Black)
-                    Text("Create a simple invite link for friends to open your ${selectedDate.format(DateTimeFormatter.ofPattern("d MMM"))} diary.", color = MaterialTheme.colorScheme.primary)
+                    Text("Create a public web link for your ${selectedDate.format(DateTimeFormatter.ofPattern("d MMM"))} food and drink photos.", color = MaterialTheme.colorScheme.primary)
                     Button(onClick = onShareDay) {
                         Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Create invite link")
+                        Text("Create public day link")
                     }
                 }
             }
@@ -1187,6 +1199,13 @@ private fun SummaryMetric(label: String, value: String, modifier: Modifier = Mod
         Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
+
+private fun CafeCrewPerson.isOwnProfile(settings: AppSettings): Boolean =
+    displayName.trim().equals(settings.displayName.trim(), ignoreCase = true) ||
+        inviteCode.isNotBlank() && inviteCode == settings.username
+
+private fun CafeCrewPerson.isLegacyLocalOnlyFriend(): Boolean =
+    inviteCode == id.toFriendInviteCode()
 
 @Composable
 private fun FriendInitial(name: String, size: Dp) {
@@ -1758,9 +1777,8 @@ private fun LogEditDialog(
     var caffeine by remember(log.id) { mutableStateOf(log.caffeineMg?.toString().orEmpty()) }
     var cafe by remember(log.id) { mutableStateOf(log.cafe) }
     var place by remember(log.id) { mutableStateOf(log.locationName) }
-    var friendInput by remember(log.id) { mutableStateOf("") }
     var selectedFriends by remember(log.id) { mutableStateOf(log.friendNames.ifEmpty { listOf("Me") }) }
-    val friendSuggestions = (crewNames + selectedFriends).distinct().ifEmpty { listOf("Me") }
+    val friendSuggestions = (listOf("Me") + crewNames + selectedFriends).distinct()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1791,16 +1809,7 @@ private fun LogEditDialog(
                         )
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(friendInput, { friendInput = it.take(18) }, label = { Text("Add friend") }, modifier = Modifier.weight(1f))
-                    Button(onClick = {
-                        val friend = friendInput.trim()
-                        if (friend.isNotBlank() && !selectedFriends.contains(friend)) {
-                            selectedFriends = selectedFriends + friend
-                            friendInput = ""
-                        }
-                    }) { Text("Add") }
-                }
+                Text("Add new friends from the Friends tab first.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                 OutlinedTextField(caffeine, { value -> caffeine = value.filter(Char::isDigit).take(4) }, label = { Text("Caffeine mg") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(cafe, { cafe = it }, label = { Text("Cafe") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(place, { place = it }, label = { Text("Location") }, modifier = Modifier.fillMaxWidth())
@@ -1899,18 +1908,18 @@ private fun FriendEditDialog(
 @Composable
 private fun ShareLinkDialog(url: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
-    val isDayInvite = url.contains("?i=") || url.contains("&i=") || url.contains("/i/")
+    val isDayInvite = url.contains("?s=") || url.contains("&s=") || url.contains("?i=") || url.contains("&i=") || url.contains("/i/")
     val isFriendInvite = !isDayInvite && (url.contains("friend=") || url.contains("crew="))
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (isFriendInvite) "Share friend tag" else "Share this day") },
+        title = { Text(if (isFriendInvite) "Share friend link" else "Share public day") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     if (isFriendInvite) {
-                        "Send this to link someone to your friend tags."
+                        "Send this to someone so they can add this friend to their Nibbl app."
                     } else {
-                        "Send this invite to share the day. It includes your friend tag so they know who it came from."
+                        "This is a public web link for this calendar day. Anyone with the link can view the synced food and drink photos for that day."
                     },
                     color = MaterialTheme.colorScheme.secondary,
                 )
@@ -2005,9 +2014,8 @@ private fun EntryDialog(
     var caffeine by remember { mutableStateOf("") }
     var cafe by remember { mutableStateOf("") }
     var place by remember { mutableStateOf(pendingLog.location.name) }
-    var friendInput by remember { mutableStateOf("") }
     var selectedFriends by remember { mutableStateOf(listOf("Me")) }
-    val friendSuggestions = (crewNames + listOf("Me")).distinct().ifEmpty { listOf("Me") }
+    val friendSuggestions = (listOf("Me") + crewNames).distinct()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2043,20 +2051,7 @@ private fun EntryDialog(
                         )
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(friendInput, { friendInput = it.take(18) }, label = { Text("Add friend") }, modifier = Modifier.weight(1f))
-                    Button(
-                        onClick = {
-                            val friend = friendInput.trim()
-                            if (friend.isNotBlank() && !selectedFriends.contains(friend)) {
-                                selectedFriends = selectedFriends + friend
-                                friendInput = ""
-                            }
-                        },
-                    ) {
-                        Text("Add")
-                    }
-                }
+                Text("Add new friends from the Friends tab first.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                 OutlinedTextField(caffeine, { value -> caffeine = value.filter(Char::isDigit).take(4) }, label = { Text("Caffeine mg") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(cafe, { cafe = it }, label = { Text("Cafe") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(place, { place = it }, label = { Text("Location") }, modifier = Modifier.fillMaxWidth())

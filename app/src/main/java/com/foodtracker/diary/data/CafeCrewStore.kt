@@ -163,7 +163,7 @@ class CafeCrewStore(private val context: Context) {
     }
 
     private fun readPeople(): List<CafeCrewPerson> {
-        if (!storeFile.exists()) return listOf(CafeCrewPerson(displayName = AppSettings.DEFAULT_DISPLAY_NAME))
+        if (!storeFile.exists()) return emptyList()
         val raw = runCatching { storeFile.readText() }.getOrDefault("")
         if (raw.isBlank()) return emptyList()
 

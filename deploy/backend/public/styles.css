@@ -1,8 +1,8 @@
 :root {
   color-scheme: light;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #fff8f1;
-  color: #302a28;
+  background: #fff8f5;
+  color: #322d2a;
 }
 
 * { box-sizing: border-box; }
@@ -11,14 +11,12 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(circle at 14% 12%, #dcecc7 0 12rem, transparent 12.2rem),
-    radial-gradient(circle at 88% 16%, #ffe6b8 0 10rem, transparent 10.2rem),
-    radial-gradient(circle at 82% 86%, #d8eff1 0 11rem, transparent 11.2rem),
-    linear-gradient(180deg, #fff8f1, #ffe2df);
+    linear-gradient(180deg, rgba(255,248,245,.96), rgba(255,232,229,.92)),
+    repeating-linear-gradient(90deg, rgba(216,239,241,.32) 0 140px, rgba(255,240,184,.28) 140px 280px, rgba(220,236,199,.3) 280px 420px);
 }
 
 main {
-  width: min(1080px, calc(100vw - 32px));
+  width: min(1120px, calc(100vw - 32px));
   margin: 0 auto;
   padding: 34px 0 30px;
 }
@@ -30,43 +28,69 @@ main {
   gap: 20px;
 }
 
+.hero.launch {
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, .72fr);
+  align-items: center;
+  gap: 34px;
+  min-height: 68vh;
+}
+
 .hero.compact {
   min-height: 30vh;
 }
 
+.hero-copy {
+  display: grid;
+  gap: 18px;
+}
+
 .mark {
-  width: 86px;
-  height: 86px;
-  border-radius: 26px;
+  width: 82px;
+  height: 82px;
+  border-radius: 24px;
   display: grid;
   place-items: center;
   background: #dcecc7;
-  box-shadow: inset -10px -10px 0 rgba(255,255,255,.48), 0 18px 38px rgba(95,118,86,.18);
-  font-size: 44px;
+  box-shadow: inset -10px -10px 0 rgba(255,255,255,.48), 0 18px 38px rgba(95,118,86,.16);
+  font-size: 42px;
   font-weight: 950;
   color: #2b075f;
 }
 
-h1 {
+h1, h2, p {
   margin: 0;
-  font-size: clamp(54px, 12vw, 124px);
+}
+
+h1 {
+  font-size: clamp(56px, 12vw, 124px);
   line-height: .9;
   letter-spacing: 0;
   color: #2b075f;
 }
 
+h2 {
+  color: #2b075f;
+  font-size: clamp(24px, 3vw, 36px);
+  line-height: 1.05;
+}
+
 p {
-  margin: 0;
-  max-width: 720px;
-  font-size: clamp(18px, 2.3vw, 24px);
+  max-width: 740px;
+  font-size: clamp(17px, 2.1vw, 23px);
   line-height: 1.55;
   color: #5f7656;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 a.button, button {
   width: fit-content;
   border: 0;
-  border-radius: 16px;
+  border-radius: 14px;
   padding: 13px 18px;
   background: #2b075f;
   color: #fff;
@@ -76,26 +100,112 @@ a.button, button {
   cursor: pointer;
 }
 
+a.button.secondary {
+  background: #fffdf8;
+  color: #2b075f;
+  box-shadow: inset 0 0 0 2px #eaded6;
+}
+
 .invite {
-  width: min(620px, 100%);
+  width: min(640px, 100%);
   padding: 16px 18px;
-  border-radius: 18px;
+  border-radius: 16px;
   background: #fff0b8;
   color: #4a3b12;
   font-weight: 850;
 }
 
-.stats, .share-grid {
+.phone-card {
+  min-height: 520px;
+  border-radius: 34px;
+  background: rgba(255,253,248,.9);
+  box-shadow: 0 28px 70px rgba(122,87,65,.16);
+  padding: 26px;
+  display: grid;
+  align-content: start;
+  gap: 24px;
+}
+
+.phone-top {
+  width: 92px;
+  height: 8px;
+  border-radius: 999px;
+  background: #eaded6;
+  justify-self: center;
+}
+
+.mini-month {
+  display: grid;
+  gap: 10px;
+}
+
+.mini-month strong {
+  font-size: 42px;
+  color: #302a28;
+}
+
+.mini-month span {
+  color: #e6797b;
+  font-weight: 850;
+}
+
+.mini-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mini-grid i, .mini-grid b {
+  aspect-ratio: .78;
+  border-radius: 14px;
+  background: #fbfaf3;
+  border: 2px solid #f4e5d3;
+  padding: 9px;
+  font-style: normal;
+  font-size: 18px;
+}
+
+.mini-grid .today {
+  background: #ffe8b8;
+  border-color: #f4b14e;
+  color: #2b075f;
+}
+
+.stats, .share-grid, .feature-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
+.feature-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 18px;
+}
+
 .stat, .card, .panel {
   border-radius: 18px;
-  background: rgba(255,253,248,.86);
-  padding: 16px;
-  box-shadow: 0 14px 38px rgba(122,87,65,.12);
+  background: rgba(255,253,248,.88);
+  padding: 18px;
+  box-shadow: 0 14px 38px rgba(122,87,65,.11);
+}
+
+.panel {
+  display: grid;
+  gap: 12px;
+}
+
+.panel span {
+  color: #e6797b;
+  font-weight: 950;
+}
+
+.panel p {
+  font-size: 16px;
+  color: #6f625c;
+}
+
+.privacy {
+  margin-top: 12px;
 }
 
 .stat strong {
@@ -156,9 +266,47 @@ th {
   color: #2b075f;
 }
 
-@media (max-width: 760px) {
-  .stats, .share-grid, .admin-grid {
+footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 22px;
+  color: #7a685f;
+  font-size: 14px;
+}
+
+footer a {
+  color: #2b075f;
+  font-weight: 850;
+}
+
+@media (max-width: 860px) {
+  .hero.launch {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .phone-card {
+    min-height: 360px;
+  }
+
+  .stats, .share-grid, .admin-grid, .feature-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  main {
+    width: min(100vw - 24px, 1120px);
+    padding-top: 22px;
+  }
+
+  .stats, .share-grid, .admin-grid, .feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .phone-card {
+    display: none;
   }
 
   table {
