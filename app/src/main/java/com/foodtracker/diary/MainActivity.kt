@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -132,13 +133,21 @@ import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 class MainActivity : ComponentActivity() {
+    private var deepLinkUrl by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        deepLinkUrl = intent?.dataString
         setContent {
             FoodDiaryTheme {
-                DiaryApp()
+                DiaryApp(deepLinkUrl)
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        deepLinkUrl = intent.dataString
     }
 }
 
@@ -153,7 +162,7 @@ private data class PendingLog(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DiaryApp() {
+private fun DiaryApp(deepLinkUrl: String? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { FoodLogRepository(context) }
@@ -180,6 +189,7 @@ private fun DiaryApp() {
     var processingPreviewPath by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
+    var handledDeepLinkUrl by remember { mutableStateOf<String?>(null) }
     val filteredLogs = logs.filter { log ->
         (selectedFriend == null || log.friendNames.contains(selectedFriend)) &&
             (selectedCategory == null || log.category == selectedCategory)
@@ -244,6 +254,22 @@ private fun DiaryApp() {
     LaunchedEffect(Unit) {
         refresh()
         locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+    }
+
+    LaunchedEffect(deepLinkUrl) {
+        val url = deepLinkUrl?.takeIf { it.isNotBlank() && it != handledDeepLinkUrl } ?: return@LaunchedEffect
+        handledDeepLinkUrl = url
+        ShareLinkTokenHelper.parseCrewInviteUrl(url)?.let { invite ->
+            crewStore.upsertInvite(invite.displayName, invite.code)
+            refresh()
+            section = AppSection.Crew
+            return@LaunchedEffect
+        }
+        ShareLinkTokenHelper.parseDayUrl(url)?.let { invite ->
+            selectedDate = invite.date
+            mode = CalendarMode.Day
+            section = AppSection.Diary
+        }
     }
 
     Scaffold(
@@ -354,6 +380,15 @@ private fun DiaryApp() {
                                 crewStore.upsertName(name)
                                 refresh()
                             }
+                        },
+                        onToggleFavorite = { person ->
+                            scope.launch {
+                                crewStore.update(person.copy(isFavorite = !person.isFavorite))
+                                refresh()
+                            }
+                        },
+                        onShare = { person ->
+                            shareLink = ShareLinkTokenHelper.createCrewInviteUrl(person, settings)
                         },
                         onDelete = { person ->
                             scope.launch {
@@ -586,7 +621,13 @@ private fun DiaryPulse(date: LocalDate, mode: CalendarMode, logs: List<FoodLog>,
 }
 
 @Composable
-private fun CrewScreen(crew: List<CafeCrewPerson>, onAdd: (String) -> Unit, onDelete: (CafeCrewPerson) -> Unit) {
+private fun CrewScreen(
+    crew: List<CafeCrewPerson>,
+    onAdd: (String) -> Unit,
+    onToggleFavorite: (CafeCrewPerson) -> Unit,
+    onShare: (CafeCrewPerson) -> Unit,
+    onDelete: (CafeCrewPerson) -> Unit,
+) {
     var name by remember { mutableStateOf("") }
     LazyColumn(contentPadding = PaddingValues(bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -613,7 +654,23 @@ private fun CrewScreen(crew: List<CafeCrewPerson>, onAdd: (String) -> Unit, onDe
                     FriendInitial(person.displayName, 42.dp)
                     Column(Modifier.weight(1f)) {
                         Text(person.displayName, fontWeight = FontWeight.Black)
-                        Text(if (person.isFavorite) "Favorite cafe buddy" else "Tap on entries to tag them", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                        Text(
+                            if (person.isFavorite) "Favorite tag • @${person.inviteCode}" else "Tag on entries • @${person.inviteCode}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.secondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { onToggleFavorite(person) }) {
+                                Text(if (person.isFavorite) "Favorited" else "Favorite")
+                            }
+                            TextButton(onClick = { onShare(person) }) {
+                                Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Invite")
+                            }
+                        }
                     }
                     IconButton(onClick = { onDelete(person) }) {
                         Icon(Icons.Rounded.Delete, contentDescription = "Delete ${person.displayName}")
@@ -1543,45 +1600,81 @@ private fun ShareLinkDialog(url: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Share this day") },
+        title = { Text(if (url.contains("crew=")) "Share crew tag" else "Share this day") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Send this short invite to someone you want to share the day with.")
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    if (url.contains("crew=")) {
+                        "Send this to link a friend to your crew tags."
+                    } else {
+                        "Send this short invite to someone you want to share the day with."
+                    },
+                    color = MaterialTheme.colorScheme.secondary,
+                )
                 Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                    Text(url, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            url,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        IconButton(onClick = {
+                            copyInviteLink(context, url)
+                            onDismiss()
+                        }) {
+                            Icon(Icons.Rounded.ContentCopy, contentDescription = "Copy invite link")
+                        }
+                    }
+                }
+                Button(
+                    onClick = {
+                        copyInviteLink(context, url)
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Rounded.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Copy link")
+                }
+                Button(
+                    onClick = {
+                        shareInviteLink(context, url)
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                ) {
+                    Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Share...")
                 }
             }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard.setPrimaryClip(ClipData.newPlainText("Nibbl invite", url))
-                    onDismiss()
-                },
-            ) {
-                Icon(Icons.Rounded.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Copy")
-            }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = {
-                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, url)
-                    }
-                    context.startActivity(Intent.createChooser(sendIntent, "Share Nibbl invite"))
-                    onDismiss()
-                },
-            ) {
-                Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Send")
-            }
+            TextButton(onClick = onDismiss) { Text("Done") }
         },
     )
+}
+
+private fun copyInviteLink(context: Context, url: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("Nibbl invite", url))
+    Toast.makeText(context, "Invite copied", Toast.LENGTH_SHORT).show()
+}
+
+private fun shareInviteLink(context: Context, url: String) {
+    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, url)
+    }
+    context.startActivity(Intent.createChooser(sendIntent, "Share Nibbl invite"))
 }
 
 @Composable

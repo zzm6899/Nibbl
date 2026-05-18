@@ -146,8 +146,13 @@
     <script>
       const path = window.location.pathname;
       const params = new URLSearchParams(window.location.search);
-      if (path.startsWith("/i/") || params.has("i") || params.has("invite")) {
-        document.getElementById("invite").hidden = false;
+      const invite = document.getElementById("invite");
+      if (params.has("crew")) {
+        const name = params.get("name") || "this friend";
+        invite.textContent = `Crew tag invite for ${name}. Open this link on your phone to tag shared food and drink logs together.`;
+        invite.hidden = false;
+      } else if (path.startsWith("/i/") || params.has("i") || params.has("invite")) {
+        invite.hidden = false;
       }
 
       fetch("/api/nibbl/stats")

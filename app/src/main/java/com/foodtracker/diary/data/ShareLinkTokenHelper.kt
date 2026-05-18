@@ -4,6 +4,7 @@ import android.util.Base64
 import org.json.JSONObject
 import java.net.URI
 import java.net.URLDecoder
+import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -19,6 +20,11 @@ data class DayShareLink(
     val date: LocalDate,
     val token: String,
     val url: String,
+)
+
+data class CrewInviteToken(
+    val code: String,
+    val displayName: String,
 )
 
 object ShareLinkTokenHelper {
@@ -53,6 +59,32 @@ object ShareLinkTokenHelper {
         issuedAtMillis: Long = System.currentTimeMillis(),
     ): String =
         checksum("${date.toCompactDate()}|${displayName.trim()}|$issuedAtMillis".toByteArray(StandardCharsets.UTF_8))
+
+    fun createCrewInviteUrl(person: CafeCrewPerson, settings: AppSettings): String {
+        val code = person.inviteCode.ifBlank { person.id.take(8) }
+        val name = person.displayName.trim().take(48)
+        return "${normalizeShareHost(settings.shareHost)}/?crew=${code.urlEncode()}&name=${name.urlEncode()}"
+    }
+
+    fun parseCrewInviteUrl(url: String): CrewInviteToken? {
+        val uri = runCatching { URI(url.trim()) }.getOrNull() ?: return null
+        val values = uri.rawQuery
+            ?.split("&")
+            ?.mapNotNull { parameter ->
+                val separator = parameter.indexOf("=")
+                if (separator < 0) return@mapNotNull null
+                parameter.substring(0, separator).urlDecode() to parameter.substring(separator + 1).urlDecode()
+            }
+            ?.toMap()
+            ?: return null
+
+        val code = values["crew"]?.filter(Char::isLetterOrDigit)?.lowercase()?.take(10).orEmpty()
+        if (code.isBlank()) return null
+        return CrewInviteToken(
+            code = code,
+            displayName = values["name"]?.trim()?.take(48)?.ifBlank { null } ?: AppSettings.DEFAULT_DISPLAY_NAME,
+        )
+    }
 
     private fun createLegacyDayToken(
         date: LocalDate,
@@ -172,6 +204,9 @@ object ShareLinkTokenHelper {
 
     private fun String.urlDecode(): String =
         URLDecoder.decode(this, StandardCharsets.UTF_8.name())
+
+    private fun String.urlEncode(): String =
+        URLEncoder.encode(this, StandardCharsets.UTF_8.name())
 
     private fun LocalDate.toCompactDate(): String = format(COMPACT_DATE_FORMAT)
 

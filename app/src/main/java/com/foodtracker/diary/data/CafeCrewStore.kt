@@ -13,6 +13,7 @@ import java.util.UUID
 data class CafeCrewPerson(
     val displayName: String,
     val id: String = UUID.randomUUID().toString(),
+    val inviteCode: String = id.toInviteCode(),
     val colorHex: String? = null,
     val isFavorite: Boolean = false,
     val sortOrder: Int = 0,
@@ -58,6 +59,31 @@ class CafeCrewStore(private val context: Context) {
                     sortOrder = current.nextSortOrder(),
                 )
             )
+        }
+    }
+
+    suspend fun upsertInvite(displayName: String, inviteCode: String): CafeCrewPerson = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val cleanName = displayName.cleanPersonName()
+            val cleanCode = inviteCode.cleanInviteCode()
+            require(cleanName.isNotBlank()) { "Cafe crew person needs a name" }
+            require(cleanCode.isNotBlank()) { "Cafe crew invite needs a code" }
+
+            val current = readPeople()
+            val existing = current.firstOrNull { it.inviteCode == cleanCode }
+                ?: current.firstOrNull { it.displayName.samePersonName(cleanName) }
+
+            if (existing != null) {
+                upsertInternal(existing.copy(displayName = cleanName, inviteCode = cleanCode))
+            } else {
+                upsertInternal(
+                    CafeCrewPerson(
+                        displayName = cleanName,
+                        inviteCode = cleanCode,
+                        sortOrder = current.nextSortOrder(),
+                    )
+                )
+            }
         }
     }
 
@@ -153,6 +179,7 @@ class CafeCrewStore(private val context: Context) {
 private fun CafeCrewPerson.normalized(now: Long, fallbackSortOrder: Int): CafeCrewPerson =
     copy(
         displayName = displayName.cleanPersonName(),
+        inviteCode = inviteCode.cleanInviteCode().ifBlank { id.toInviteCode() },
         colorHex = colorHex?.trim()?.takeIf { it.matches(Regex("^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$")) },
         sortOrder = sortOrder.takeIf { it >= 0 } ?: fallbackSortOrder,
         createdAtMillis = createdAtMillis.coerceAtLeast(1L),
@@ -170,6 +197,7 @@ private fun List<CafeCrewPerson>.nextSortOrder(): Int =
 private fun CafeCrewPerson.toJson(): JSONObject = JSONObject()
     .put("id", id)
     .put("displayName", displayName)
+    .put("inviteCode", inviteCode)
     .put("colorHex", colorHex ?: JSONObject.NULL)
     .put("isFavorite", isFavorite)
     .put("sortOrder", sortOrder)
@@ -191,18 +219,24 @@ private fun String.toPeopleArray(): JSONArray {
 
 private fun Any?.toCafeCrewPersonOrNull(index: Int): CafeCrewPerson? = runCatching {
     when (this) {
-        is JSONObject -> CafeCrewPerson(
-            id = optNonBlankString("id") ?: UUID.nameUUIDFromBytes(toString().toByteArray()).toString(),
-            displayName = optNonBlankString("displayName")
-                ?: optNonBlankString("name")
-                ?: optNonBlankString("friendName")
-                ?: "",
-            colorHex = optNonBlankString("colorHex") ?: optNonBlankString("color"),
-            isFavorite = optBoolean("isFavorite", optBoolean("favorite", false)),
-            sortOrder = optInt("sortOrder", index),
-            createdAtMillis = optLong("createdAtMillis", optLong("createdAt", System.currentTimeMillis())),
-            updatedAtMillis = optLong("updatedAtMillis", optLong("updatedAt", System.currentTimeMillis())),
-        )
+        is JSONObject -> {
+            val parsedId = optNonBlankString("id") ?: UUID.nameUUIDFromBytes(toString().toByteArray()).toString()
+            CafeCrewPerson(
+                id = parsedId,
+                inviteCode = optNonBlankString("inviteCode")
+                    ?: optNonBlankString("code")
+                    ?: parsedId.toInviteCode(),
+                displayName = optNonBlankString("displayName")
+                    ?: optNonBlankString("name")
+                    ?: optNonBlankString("friendName")
+                    ?: "",
+                colorHex = optNonBlankString("colorHex") ?: optNonBlankString("color"),
+                isFavorite = optBoolean("isFavorite", optBoolean("favorite", false)),
+                sortOrder = optInt("sortOrder", index),
+                createdAtMillis = optLong("createdAtMillis", optLong("createdAt", System.currentTimeMillis())),
+                updatedAtMillis = optLong("updatedAtMillis", optLong("updatedAt", System.currentTimeMillis())),
+            )
+        }
         is String -> CafeCrewPerson(displayName = this, sortOrder = index)
         else -> null
     }
@@ -219,3 +253,9 @@ private fun String.normalizedPersonKey(): String =
 
 private fun String.samePersonName(other: String): Boolean =
     normalizedPersonKey() == other.normalizedPersonKey()
+
+private fun String.cleanInviteCode(): String =
+    trim().filter(Char::isLetterOrDigit).lowercase().take(10)
+
+private fun String.toInviteCode(): String =
+    cleanInviteCode().ifBlank { "crew" }
