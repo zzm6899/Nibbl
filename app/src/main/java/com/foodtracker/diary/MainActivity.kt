@@ -1244,17 +1244,8 @@ private fun SettingsScreen(
 
 @Composable
 private fun AddLogBar(processing: Boolean, onGallery: () -> Unit, onCamera: () -> Unit) {
-    val transition = rememberInfiniteTransition(label = "add-log-bar")
-    val glow by transition.animateFloat(
-        initialValue = 0.985f,
-        targetValue = 1.015f,
-        animationSpec = infiniteRepeatable(tween(1200), RepeatMode.Reverse),
-        label = "addGlow",
-    )
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .graphicsLayer(scaleX = if (processing) 1f else glow, scaleY = if (processing) 1f else glow),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
         tonalElevation = 1.dp,
@@ -1981,6 +1972,7 @@ private fun EmptyDayState(hasAnyLogs: Boolean, hasActiveFilters: Boolean, onClea
 
 @Composable
 private fun LogDetailsDialog(log: FoodLog, onDismiss: () -> Unit, onEdit: () -> Unit, onShare: () -> Unit, onDelete: () -> Unit) {
+    var confirmingDelete by remember(log.id) { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(log.title.ifBlank { log.category.label }) },
@@ -2019,11 +2011,28 @@ private fun LogDetailsDialog(log: FoodLog, onDismiss: () -> Unit, onEdit: () -> 
             }
         },
         dismissButton = {
-            TextButton(onClick = onDelete) {
+            TextButton(onClick = { confirmingDelete = true }) {
                 Text("Delete", color = MaterialTheme.colorScheme.secondary)
             }
         },
     )
+    if (confirmingDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmingDelete = false },
+            title = { Text("Delete this log?") },
+            text = { Text("This removes the saved food or drink photo from your diary.") },
+            confirmButton = {
+                TextButton(onClick = onDelete) {
+                    Text("Delete", color = MaterialTheme.colorScheme.secondary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingDelete = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
 }
 
 @Composable
