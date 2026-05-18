@@ -270,6 +270,24 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
             }
         }
     }
+    val profilePhotoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                runCatching {
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: error("Could not open selected image")
+                    val ext = uri.lastPathSegment
+                        ?.substringAfterLast('.', "")
+                        ?.takeIf { it.isNotBlank() && it.length <= 5 }
+                        ?: "jpg"
+                    settings = settingsRepository.saveProfileImage(bytes, ".$ext")
+                    BackendFriendTagChecker.updateOwnerProfile(settings.shareHost, settings)
+                }.onFailure {
+                    error = it.message ?: "Could not save profile photo"
+                }
+            }
+        }
+    }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
         if (permissions[Manifest.permission.CAMERA] == true) {
             scope.launch {
@@ -293,7 +311,6 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
             crewStore.upsertInvite(invite.displayName, invite.code)
             refresh()
             section = AppSection.Crew
-            return@LaunchedEffect
         }
         ShareLinkTokenHelper.parseDayUrl(url)?.let { invite ->
             selectedDate = invite.date
@@ -452,6 +469,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                                 BackendFriendTagChecker.updateOwnerProfile(settings.shareHost, settings)
                             }
                         },
+                        onProfilePhoto = { profilePhotoLauncher.launch("image/*") },
                         onAddCategory = { label ->
                             scope.launch {
                                 categories = categoryStore.add(label)
@@ -804,6 +822,7 @@ private fun SettingsScreen(
     selectedDate: LocalDate,
     categories: List<DrinkCategory>,
     onSettings: (AppSettings) -> Unit,
+    onProfilePhoto: () -> Unit,
     onAddCategory: (String) -> Unit,
     onDeleteCategory: (DrinkCategory) -> Unit,
     onShareDay: () -> Unit,
@@ -822,6 +841,21 @@ private fun SettingsScreen(
         item {
             Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        ProfileAvatar(settings, 74.dp)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Profile", fontWeight = FontWeight.Black)
+                            Text("Your name, photo, and friend tag for invites.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                        }
+                        TextButton(onClick = onProfilePhoto) {
+                            Icon(Icons.Rounded.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Photo")
+                        }
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Week starts Monday", fontWeight = FontWeight.Bold)
@@ -840,7 +874,7 @@ private fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         prefix = { Text("@") },
-                        supportingText = { Text("Used for admin stats and future cloud sync.") },
+                        supportingText = { Text("Shown on friend invites and shared days.") },
                     )
                     profileError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     if (profileSaving) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -1167,6 +1201,25 @@ private fun FriendAvatar(person: CafeCrewPerson, size: Dp) {
     Image(
         painter = rememberAsyncImagePainter(avatarFile),
         contentDescription = "${person.displayName} profile photo",
+        contentScale = ContentScale.Crop,
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape),
+    )
+}
+
+@Composable
+private fun ProfileAvatar(settings: AppSettings, size: Dp) {
+    val avatarFile = settings.profileImagePath?.let(::File)?.takeIf { it.isFile }
+    if (avatarFile == null) {
+        FriendInitial(settings.displayName, size)
+        return
+    }
+
+    Image(
+        painter = rememberAsyncImagePainter(avatarFile),
+        contentDescription = "${settings.displayName} profile photo",
         contentScale = ContentScale.Crop,
         modifier = Modifier
             .size(size)
@@ -1827,16 +1880,18 @@ private fun FriendEditDialog(
 @Composable
 private fun ShareLinkDialog(url: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val isDayInvite = url.contains("?i=") || url.contains("&i=") || url.contains("/i/")
+    val isFriendInvite = !isDayInvite && (url.contains("friend=") || url.contains("crew="))
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (url.contains("friend=") || url.contains("crew=")) "Share friend tag" else "Share this day") },
+        title = { Text(if (isFriendInvite) "Share friend tag" else "Share this day") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    if (url.contains("friend=") || url.contains("crew=")) {
+                    if (isFriendInvite) {
                         "Send this to link someone to your friend tags."
                     } else {
-                        "Send this short invite to someone you want to share the day with."
+                        "Send this invite to share the day. It includes your friend tag so they know who it came from."
                     },
                     color = MaterialTheme.colorScheme.secondary,
                 )

@@ -42,7 +42,7 @@ object ShareLinkTokenHelper {
         return DayShareLink(
             date = date,
             token = token,
-            url = createDayUrl(date, settings.shareHost, token),
+            url = createDayUrl(date, settings.shareHost, token, settings),
         )
     }
 
@@ -194,6 +194,17 @@ object ShareLinkTokenHelper {
     private fun createDayUrl(date: LocalDate, shareHost: String, token: String): String {
         val base = normalizeShareHost(shareHost)
         return "$base/?i=${date.toCompactDate()}-$token"
+    }
+
+    private fun createDayUrl(date: LocalDate, shareHost: String, token: String, settings: AppSettings): String {
+        val base = createDayUrl(date, shareHost, token)
+        val tag = settings.username.ifBlank { settings.displayName.toFriendInviteCode() }
+        val name = settings.displayName.trim().take(48)
+        return if (tag.isBlank()) {
+            "$base&name=${name.urlEncode()}"
+        } else {
+            "$base&friend=${tag.urlEncode()}&name=${name.urlEncode()}"
+        }
     }
 
     private fun checksum(bytes: ByteArray): String {
