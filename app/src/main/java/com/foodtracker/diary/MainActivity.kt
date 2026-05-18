@@ -105,6 +105,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -787,61 +788,136 @@ private fun CrewScreen(
     onDelete: (CafeCrewPerson) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
+    val sortedCrew = remember(crew) {
+        crew.sortedWith(compareByDescending<CafeCrewPerson> { it.isFavorite }.thenBy { it.displayName.lowercase() })
+    }
     LazyColumn(contentPadding = PaddingValues(bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Text("Friends", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-            Text("Add friends from their Nibbl invite link or public username. Your own profile lives in Settings.", color = MaterialTheme.colorScheme.secondary)
-        }
-        item {
-            Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
-                Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(name, { name = it.take(96) }, label = { Text("Invite link or username") }, modifier = Modifier.weight(1f))
-                    Button(onClick = {
-                        val clean = name.trim()
-                        if (clean.isNotBlank()) {
-                            onAdd(clean)
-                            name = ""
-                        }
-                    }) { Text("Add") }
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                tonalElevation = 1.dp,
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(54.dp)
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.74f), CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Rounded.Group, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Friends", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+                        Text(
+                            if (crew.isEmpty()) "Invite links and public @usernames."
+                            else "${crew.size} friend${if (crew.size == 1) "" else "s"} ready to tag.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.secondary,
+                        )
+                    }
                 }
             }
         }
-        items(crew, key = { it.id }) { person ->
-            Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), tonalElevation = 1.dp) {
-                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    FriendAvatar(person, 42.dp)
-                    Column(Modifier.weight(1f)) {
-                        Text(person.displayName, fontWeight = FontWeight.Black)
-                        Text(
-                            if (person.isFavorite) "Favorite tag • @${person.inviteCode}" else "Tag on entries • @${person.inviteCode}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.secondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                            TextButton(onClick = { onToggleFavorite(person) }) {
-                                Text(if (person.isFavorite) "Favorited" else "Favorite")
-                            }
-                            TextButton(onClick = { onShare(person) }) {
-                                Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Invite")
-                            }
-                            TextButton(onClick = { onPhoto(person) }) {
-                                Icon(Icons.Rounded.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Photo")
-                            }
-                            TextButton(onClick = { onEdit(person) }) {
-                                Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Edit")
-                            }
+        item {
+            Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Icon(Icons.Rounded.Share, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
+                        Column(Modifier.weight(1f)) {
+                            Text("Add a friend", fontWeight = FontWeight.Black)
+                            Text("Paste an invite link or @username.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                         }
                     }
-                    IconButton(onClick = { onDelete(person) }) {
-                        Icon(Icons.Rounded.Delete, contentDescription = "Delete ${person.displayName}")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            name,
+                            { name = it.take(96) },
+                            label = { Text("Invite or @name") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Button(
+                            enabled = name.trim().isNotBlank(),
+                            onClick = {
+                                val clean = name.trim()
+                                if (clean.isNotBlank()) {
+                                    onAdd(clean)
+                                    name = ""
+                                }
+                            },
+                        ) { Text("Add") }
+                    }
+                }
+            }
+        }
+        if (sortedCrew.isEmpty()) {
+            item {
+                Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f)) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(34.dp))
+                        Text("No friends yet", fontWeight = FontWeight.Black)
+                        Text(
+                            "Use a Nibbl invite link to add someone. Your own profile stays in Settings.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.secondary,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
+            }
+        }
+        items(sortedCrew, key = { it.id }) { person ->
+            Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f), tonalElevation = 1.dp) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        FriendAvatar(person, 54.dp)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(person.displayName, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.64f)) {
+                                    Text("@${person.inviteCode}", modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                }
+                                if (person.isFavorite) {
+                                    Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)) {
+                                        Text("Favorite", modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                        IconButton(onClick = { onDelete(person) }) {
+                            Icon(Icons.Rounded.Delete, contentDescription = "Delete ${person.displayName}")
+                        }
+                    }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AssistChip(
+                            onClick = { onShare(person) },
+                            label = { Text("Invite") },
+                            leadingIcon = { Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        )
+                        AssistChip(
+                            onClick = { onToggleFavorite(person) },
+                            label = { Text(if (person.isFavorite) "Favorited" else "Favorite") },
+                            leadingIcon = { Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        )
+                        AssistChip(
+                            onClick = { onPhoto(person) },
+                            label = { Text("Photo") },
+                            leadingIcon = { Icon(Icons.Rounded.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        )
+                        AssistChip(
+                            onClick = { onEdit(person) },
+                            label = { Text("Edit") },
+                            leadingIcon = { Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        )
                     }
                 }
             }
