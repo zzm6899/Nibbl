@@ -130,6 +130,7 @@ import com.foodtracker.diary.data.ShareLinkTokenHelper
 import com.foodtracker.diary.data.toFriendInviteCode
 import com.foodtracker.diary.ui.theme.FoodDiaryTheme
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.io.File
 import java.time.Instant
 import java.time.LocalDate
@@ -199,6 +200,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
     var processing by remember { mutableStateOf(false) }
     var processingPreviewPath by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var friendMessage by remember { mutableStateOf<String?>(null) }
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
     var pendingAvatarPerson by remember { mutableStateOf<CafeCrewPerson?>(null) }
     var editFriend by remember { mutableStateOf<CafeCrewPerson?>(null) }
@@ -266,16 +268,23 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
     suspend fun addFriendFromInviteOrTag(input: String) {
         val resolved = BackendFriendTagChecker.resolve(settings.shareHost, input)
         if (resolved == null) {
-            error = "Friend doesn't exist yet. Check the username or ask them to open Nibbl first."
+            friendMessage = "Friend doesn't exist yet. Check the username or ask them to open Nibbl first."
             return
         }
         if (resolved.tag == settings.username) {
-            error = "Your profile is edited in Settings, not Friends."
+            friendMessage = "Your profile is edited in Settings, not Friends."
             return
         }
         crewStore.upsertInvite(resolved.displayName, resolved.tag, resolved.avatarUrl)
-        error = null
+        friendMessage = "Friend added."
         refresh()
+    }
+
+    LaunchedEffect(friendMessage) {
+        if (friendMessage != null) {
+            delay(3_500)
+            friendMessage = null
+        }
     }
 
     suspend fun repeatLog(log: FoodLog) {
@@ -489,7 +498,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                     }
                     AppSection.Crew -> CrewScreen(
                         crew = crew,
-                        error = error,
+                        message = friendMessage,
                         onAdd = { name ->
                             scope.launch {
                                 addFriendFromInviteOrTag(name)
@@ -896,7 +905,7 @@ private fun DiaryPulse(date: LocalDate, mode: CalendarMode, logs: List<FoodLog>,
 @OptIn(ExperimentalLayoutApi::class)
 private fun CrewScreen(
     crew: List<CafeCrewPerson>,
-    error: String?,
+    message: String?,
     onAdd: (String) -> Unit,
     onToggleFavorite: (CafeCrewPerson) -> Unit,
     onPhoto: (CafeCrewPerson) -> Unit,
@@ -968,8 +977,12 @@ private fun CrewScreen(
                             },
                         ) { Text("Add") }
                     }
-                    error?.let {
-                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    message?.let {
+                        Text(
+                            it,
+                            color = if (it == "Friend added.") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
                 }
             }
