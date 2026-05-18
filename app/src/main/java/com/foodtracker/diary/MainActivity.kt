@@ -74,6 +74,7 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -447,6 +448,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                             onGallery = { galleryLauncher.launch("image/*") },
                             onCamera = { permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA)) },
                         )
+                        Spacer(Modifier.height(4.dp))
                     }
                     AppSection.Crew -> CrewScreen(
                         crew = crew,
@@ -1013,35 +1015,32 @@ private fun AddLogBar(processing: Boolean, onGallery: () -> Unit, onCamera: () -
         tonalElevation = 1.dp,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f)) {
                 Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(9.dp))
             }
             Column(Modifier.weight(1f)) {
-                Text("Add something", fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("Photo or camera", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                Text("Add food or drink", fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("Pick a photo or take one", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            Button(
+            FilledIconButton(
                 onClick = onGallery,
                 enabled = !processing,
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                ),
             ) {
-                Icon(Icons.Rounded.PhotoLibrary, contentDescription = "Choose from album", modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Album")
+                Icon(Icons.Rounded.PhotoLibrary, contentDescription = "Choose from album")
             }
-            Button(
+            FilledIconButton(
                 onClick = onCamera,
                 enabled = !processing,
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
             ) {
-                Icon(Icons.Rounded.AddAPhoto, contentDescription = "Take photo", modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Camera")
+                Icon(Icons.Rounded.AddAPhoto, contentDescription = "Take photo")
             }
         }
     }
