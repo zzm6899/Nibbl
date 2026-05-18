@@ -34,10 +34,110 @@ main {
 }
 
 .hero.launch {
+  position: relative;
   grid-template-columns: minmax(0, 1.1fr) minmax(280px, .72fr);
   align-items: center;
   gap: 42px;
   min-height: 72vh;
+}
+
+.launch-sprinkles {
+  position: absolute;
+  inset: -16px 0 auto 0;
+  height: min(72vh, 620px);
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.hero.launch > :not(.launch-sprinkles) {
+  position: relative;
+  z-index: 1;
+}
+
+.sprinkle,
+.sparkle {
+  position: absolute;
+  display: block;
+  opacity: .74;
+  filter: drop-shadow(0 12px 20px rgba(122,87,65,.12));
+}
+
+.sprinkle {
+  width: 34px;
+  height: 34px;
+  border-radius: 14px;
+  background: #ffd6d8;
+}
+
+.sprinkle::before,
+.sprinkle::after {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+}
+
+.sprinkle::before {
+  inset: 9px;
+  background: #fffdf8;
+}
+
+.sprinkle::after {
+  width: 9px;
+  height: 9px;
+  right: 4px;
+  bottom: 4px;
+  background: #e87979;
+}
+
+.sprinkle-a {
+  left: 2%;
+  top: 12%;
+  background: #eaf4d8;
+  animation: driftA 7.2s ease-in-out infinite;
+}
+
+.sprinkle-b {
+  left: 48%;
+  top: 7%;
+  background: #fff0b8;
+  animation: driftB 8s ease-in-out infinite;
+}
+
+.sprinkle-c {
+  right: 3%;
+  top: 22%;
+  background: #d8eff1;
+  animation: driftC 7.6s ease-in-out infinite;
+}
+
+.sprinkle-d {
+  right: 27%;
+  bottom: 8%;
+  width: 24px;
+  height: 24px;
+  background: #ffd6d8;
+  animation: driftA 6.6s ease-in-out infinite reverse;
+}
+
+.sparkle {
+  color: #f4b95d;
+  font-size: 34px;
+  font-weight: 950;
+  line-height: 1;
+  animation: twinkleSpin 2.2s ease-in-out infinite;
+}
+
+.sparkle-a {
+  left: 40%;
+  top: 32%;
+}
+
+.sparkle-b {
+  right: 10%;
+  bottom: 22%;
+  color: #e87979;
+  animation-delay: .5s;
 }
 
 .hero.compact {
@@ -165,6 +265,8 @@ p {
 }
 
 a.button, button {
+  position: relative;
+  overflow: hidden;
   width: fit-content;
   border: 0;
   border-radius: 999px;
@@ -176,6 +278,21 @@ a.button, button {
   text-decoration: none;
   cursor: pointer;
   transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+a.button::after,
+button::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-120%) skewX(-18deg);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.34), transparent);
+  animation: buttonShine 3.8s ease-in-out infinite;
+}
+
+a.button.secondary::after,
+button.secondary::after {
+  background: linear-gradient(90deg, transparent, rgba(232,121,121,.18), transparent);
 }
 
 a.button:hover, button:hover {
@@ -247,6 +364,8 @@ a.button.secondary, button.secondary {
 }
 
 .phone-card {
+  position: relative;
+  overflow: hidden;
   min-height: 560px;
   border-radius: 36px;
   background: rgba(255,253,248,.94);
@@ -257,6 +376,32 @@ a.button.secondary, button.secondary {
   gap: 18px;
   border: 8px solid rgba(255,255,255,.7);
   animation: phoneFloat 4.8s ease-in-out infinite, riseIn .78s ease both;
+}
+
+.phone-card::before {
+  content: "";
+  position: absolute;
+  inset: 72px 24px auto;
+  height: 138px;
+  border-radius: 34px;
+  background: linear-gradient(180deg, rgba(255,255,255,.62), rgba(255,255,255,0));
+  transform: translateY(-120%);
+  animation: scannerSweep 4.8s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.phone-card::after {
+  content: "";
+  position: absolute;
+  right: 28px;
+  top: 82px;
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  background: #e87979;
+  box-shadow: 0 0 0 8px rgba(232,121,121,.13);
+  animation: statusPing 1.7s ease-in-out infinite;
 }
 
 .phone-top {
@@ -293,6 +438,7 @@ a.button.secondary, button.secondary {
   border-radius: 30px;
   background: #eaf4d8;
   box-shadow: 0 18px 34px rgba(122,87,65,.13);
+  transition: transform .2s ease;
 }
 
 .photo-item::before,
@@ -380,7 +526,16 @@ a.button.secondary, button.secondary {
   font-style: normal;
   font-size: 18px;
   transition: transform .18s ease, background .18s ease;
+  animation: cellPop .44s ease both;
 }
+
+.mini-grid i:nth-child(7n+1), .mini-grid b:nth-child(7n+1) { animation-delay: .02s; }
+.mini-grid i:nth-child(7n+2), .mini-grid b:nth-child(7n+2) { animation-delay: .06s; }
+.mini-grid i:nth-child(7n+3), .mini-grid b:nth-child(7n+3) { animation-delay: .1s; }
+.mini-grid i:nth-child(7n+4), .mini-grid b:nth-child(7n+4) { animation-delay: .14s; }
+.mini-grid i:nth-child(7n+5), .mini-grid b:nth-child(7n+5) { animation-delay: .18s; }
+.mini-grid i:nth-child(7n+6), .mini-grid b:nth-child(7n+6) { animation-delay: .22s; }
+.mini-grid i:nth-child(7n), .mini-grid b:nth-child(7n) { animation-delay: .26s; }
 
 .mini-grid b:hover {
   transform: translateY(-3px) rotate(-2deg);
@@ -699,6 +854,48 @@ tbody tr:hover {
   0% { opacity: 0; transform: scale(.86); }
   70% { transform: scale(1.08); }
   100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes driftA {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-10deg); }
+  50% { transform: translate3d(18px, -22px, 0) rotate(12deg); }
+}
+
+@keyframes driftB {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(12deg) scale(1); }
+  50% { transform: translate3d(-16px, 18px, 0) rotate(-9deg) scale(1.08); }
+}
+
+@keyframes driftC {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(4deg); }
+  50% { transform: translate3d(-22px, -12px, 0) rotate(-14deg); }
+}
+
+@keyframes twinkleSpin {
+  0%, 100% { opacity: .25; transform: scale(.78) rotate(0deg); }
+  45% { opacity: .9; transform: scale(1.12) rotate(18deg); }
+  70% { opacity: .55; transform: scale(.92) rotate(42deg); }
+}
+
+@keyframes buttonShine {
+  0%, 58% { transform: translateX(-120%) skewX(-18deg); }
+  76%, 100% { transform: translateX(120%) skewX(-18deg); }
+}
+
+@keyframes scannerSweep {
+  0%, 44% { transform: translateY(-130%); opacity: 0; }
+  55% { opacity: .7; }
+  74%, 100% { transform: translateY(230%); opacity: 0; }
+}
+
+@keyframes statusPing {
+  0%, 100% { transform: scale(.9); opacity: .74; }
+  50% { transform: scale(1.18); opacity: 1; }
+}
+
+@keyframes cellPop {
+  from { opacity: 0; transform: translateY(10px) scale(.92); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 footer {
