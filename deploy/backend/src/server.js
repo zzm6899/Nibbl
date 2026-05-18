@@ -98,15 +98,34 @@ app.post("/api/nibbl/ingest", requireDeviceAuth, upload.fields([
     const timestamp = Number(body.timestamp || Date.now());
     const logDate = body.logDate ? dateFromSlug(text(body.logDate, 32)) : new Date(timestamp).toISOString().slice(0, 10);
     const friendNames = arrayValue(body.friendNames);
+    const clientLogId = text(body.clientLogId, 80);
 
     const result = await pool.query(
       `insert into logs (
-        owner_id, owner_name, owner_tag, timestamp_ms, log_date, title, category, caffeine_mg,
+        owner_id, client_log_id, owner_name, owner_tag, timestamp_ms, log_date, title, category, caffeine_mg,
         cafe, location_name, latitude, longitude, friend_names, image_key, original_image_key, source
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16)
+      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17)
+      on conflict (owner_id, client_log_id) where client_log_id <> ''
+      do update set
+        owner_name = excluded.owner_name,
+        owner_tag = excluded.owner_tag,
+        timestamp_ms = excluded.timestamp_ms,
+        log_date = excluded.log_date,
+        title = excluded.title,
+        category = excluded.category,
+        caffeine_mg = excluded.caffeine_mg,
+        cafe = excluded.cafe,
+        location_name = excluded.location_name,
+        latitude = excluded.latitude,
+        longitude = excluded.longitude,
+        friend_names = excluded.friend_names,
+        image_key = coalesce(excluded.image_key, logs.image_key),
+        original_image_key = coalesce(excluded.original_image_key, logs.original_image_key),
+        updated_at = now()
       returning id`,
       [
         req.device.owner_id,
+        clientLogId,
         text(body.ownerName, 48) || req.device.owner_name,
         friendTag(body.ownerTag) || req.device.owner_tag,
         timestamp,
@@ -333,6 +352,7 @@ async function bootstrap() {
     create table if not exists logs (
       id uuid primary key default gen_random_uuid(),
       owner_id text not null default '',
+      client_log_id text not null default '',
       owner_name text not null default '',
       owner_tag text not null default '',
       timestamp_ms bigint not null,
@@ -378,6 +398,8 @@ async function bootstrap() {
     );
     create index if not exists day_shares_date_idx on day_shares(log_date);
   `);
+  await pool.query("alter table logs add column if not exists client_log_id text not null default ''");
+  await pool.query("create unique index if not exists logs_owner_client_log_idx on logs(owner_id, client_log_id) where client_log_id <> ''");
   await pool.query("alter table devices add column if not exists avatar_key text");
   await ensureObjectStorage();
 }

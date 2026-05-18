@@ -56,6 +56,7 @@ class BackendDrinkReporter {
 
 private fun FoodLog.toBackendJson(settings: AppSettings?): JSONObject =
     JSONObject()
+        .put("clientLogId", id)
         .put("timestamp", timestamp)
         .put("logDate", Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault()).toLocalDate().toString())
         .put("title", title)

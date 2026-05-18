@@ -249,6 +249,9 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
 
     suspend fun createPublicDayShare(date: LocalDate): String? {
         val registered = ensureRegisteredSettings()
+        repository.logsForDate(repository.logs(), date).forEach { log ->
+            backendDrinkReporter.submit(registered.shareHost, log, registered)
+        }
         return BackendShareClient.createDayShare(settingsRepository, registered, date).also {
             if (it == null) {
                 error = "Could not create a public day link. Check your server connection and try again."
