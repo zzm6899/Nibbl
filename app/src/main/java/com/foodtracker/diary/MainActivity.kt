@@ -111,8 +111,10 @@ import coil.compose.rememberAsyncImagePainter
 import com.foodtracker.diary.data.AppSettings
 import com.foodtracker.diary.data.AppSettingsRepository
 import com.foodtracker.diary.data.BackgroundRemover
+import com.foodtracker.diary.data.BackendDeviceClient
 import com.foodtracker.diary.data.BackendDrinkReporter
 import com.foodtracker.diary.data.BackendFriendTagChecker
+import com.foodtracker.diary.data.BackendShareClient
 import com.foodtracker.diary.data.CafeCrewPerson
 import com.foodtracker.diary.data.CafeCrewStore
 import com.foodtracker.diary.data.CategoryStore
@@ -231,13 +233,30 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
         processingPreviewPath = null
     }
 
+    suspend fun ensureRegisteredSettings(): AppSettings {
+        val registered = BackendDeviceClient.ensureRegistered(settingsRepository, settings)
+        if (registered != settings) settings = registered
+        return registered
+    }
+
+    suspend fun submitLog(log: FoodLog) {
+        val registered = ensureRegisteredSettings()
+        backendDrinkReporter.submit(registered.shareHost, log, registered)
+    }
+
+    suspend fun createPublicDayShare(date: LocalDate): String {
+        val registered = ensureRegisteredSettings()
+        return BackendShareClient.createDayShare(settingsRepository, registered, date)
+            ?: ShareLinkTokenHelper.createDayShareLink(date, registered).url
+    }
+
     suspend fun repeatLog(log: FoodLog) {
         val repeated = log.copy(
             id = UUID.randomUUID().toString(),
             timestamp = selectedDate.atTime(LocalTime.now()).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
         )
         repository.save(repeated)
-        backendDrinkReporter.submit(settings.shareHost, repeated, settings)
+        submitLog(repeated)
         refresh()
         mode = CalendarMode.Day
     }
@@ -281,6 +300,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                         ?.takeIf { it.isNotBlank() && it.length <= 5 }
                         ?: "jpg"
                     settings = settingsRepository.saveProfileImage(bytes, ".$ext")
+                    settings = ensureRegisteredSettings()
                     BackendFriendTagChecker.updateOwnerProfile(settings.shareHost, settings)
                 }.onFailure {
                     error = it.message ?: "Could not save profile photo"
@@ -466,6 +486,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                         onSettings = { next ->
                             scope.launch {
                                 settings = settingsRepository.save(next)
+                                settings = ensureRegisteredSettings()
                                 BackendFriendTagChecker.updateOwnerProfile(settings.shareHost, settings)
                             }
                         },
@@ -482,7 +503,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                             }
                         },
                         onShareDay = {
-                            shareLink = ShareLinkTokenHelper.createDayShareLink(selectedDate, settings).url
+                            scope.launch { shareLink = createPublicDayShare(selectedDate) }
                         },
                     )
                 }
@@ -519,7 +540,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                         friendNames = friends,
                     )
                     repository.save(log)
-                    backendDrinkReporter.submit(settings.shareHost, log, settings)
+                    submitLog(log)
                     crewStore.ensurePeopleForNames(friends)
                     selectedDate = LocalDate.now()
                     pending = null
@@ -541,8 +562,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
             },
             onShare = {
                 scope.launch {
-                    val link = ShareLinkTokenHelper.createDayShareLink(selectedDate, settings)
-                    shareLink = link.url
+                    shareLink = createPublicDayShare(selectedDate)
                     detailLog = null
                 }
             },

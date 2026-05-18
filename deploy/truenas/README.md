@@ -17,17 +17,10 @@ This stack runs the Nibbl backend on host port `5100`, Postgres for authoritativ
 3. Create `.env` beside `docker-compose.yml`:
 
 ```env
-NIBBL_INGEST_KEY=replace-with-a-long-random-value
 NIBBL_ADMIN_PASSWORD=replace-with-an-admin-password
 POSTGRES_PASSWORD=replace-with-a-postgres-password
 MINIO_ROOT_USER=nibblminio
 MINIO_ROOT_PASSWORD=replace-with-a-minio-password
-```
-
-Build the Android APK with the same ingest key:
-
-```powershell
-.\gradlew.bat assembleDebug -PNIBBL_INGEST_KEY="your-long-random-value"
 ```
 
 4. In TrueNAS Apps, create or update the custom app from `docker-compose.yml`.

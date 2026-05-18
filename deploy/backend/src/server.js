@@ -10,7 +10,6 @@ import pg from "pg";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, "../public");
 const port = Number(process.env.PORT || 8090);
-const ingestKey = process.env.NIBBL_INGEST_KEY || "";
 const adminPassword = process.env.NIBBL_ADMIN_PASSWORD || "";
 const databaseUrl = process.env.DATABASE_URL || "postgres://nibbl:nibbl@postgres:5432/nibbl";
 const objectMode = (process.env.OBJECT_STORAGE || "local").toLowerCase();
@@ -22,6 +21,7 @@ const pool = new pg.Pool({ connectionString: databaseUrl });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } });
 let dbReady = false;
 let lastBootstrapError = "";
+const rateBuckets = new Map();
 const s3 = objectMode === "s3"
   ? new S3Client({
       region: process.env.S3_REGION || "us-east-1",
@@ -37,6 +37,9 @@ const s3 = objectMode === "s3"
   : null;
 
 const app = express();
+app.disable("x-powered-by");
+app.use(securityHeaders);
+app.use(rateLimit);
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(publicDir, { extensions: ["html"], index: false }));
@@ -48,7 +51,30 @@ app.get("/api/health", (_req, res) => res.json({
   error: dbReady ? undefined : lastBootstrapError || undefined,
 }));
 
-app.post("/api/nibbl/ingest", requireIngestKey, upload.fields([
+app.post("/api/nibbl/devices/register", async (req, res, next) => {
+  try {
+    const ownerId = text(req.body.ownerId, 64) || crypto.randomUUID();
+    const ownerName = text(req.body.ownerName, 48) || "Me";
+    const ownerTag = friendTag(req.body.ownerTag);
+    const token = crypto.randomBytes(32).toString("base64url");
+    const tokenHash = tokenHashFor(token);
+    await pool.query(
+      `insert into devices (owner_id, owner_name, owner_tag, token_hash)
+       values ($1,$2,$3,$4)
+       on conflict (owner_id) do update set
+        owner_name = excluded.owner_name,
+        owner_tag = excluded.owner_tag,
+        token_hash = excluded.token_hash,
+        updated_at = now()`,
+      [ownerId, ownerName, ownerTag, tokenHash],
+    );
+    res.status(201).json({ ownerId, apiToken: token });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/nibbl/ingest", requireDeviceAuth, upload.fields([
   { name: "image", maxCount: 1 },
   { name: "cutout", maxCount: 1 },
   { name: "original", maxCount: 1 },
@@ -70,9 +96,9 @@ app.post("/api/nibbl/ingest", requireIngestKey, upload.fields([
       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16)
       returning id`,
       [
-        text(body.ownerId, 64),
-        text(body.ownerName, 48),
-        friendTag(body.ownerTag),
+        req.device.owner_id,
+        text(body.ownerName, 48) || req.device.owner_name,
+        friendTag(body.ownerTag) || req.device.owner_tag,
         timestamp,
         logDate,
         text(body.title, 80),
@@ -119,17 +145,36 @@ app.get("/api/nibbl/friends/available", async (req, res, next) => {
   }
 });
 
-app.post("/api/nibbl/profile", requireIngestKey, async (req, res, next) => {
+app.post("/api/nibbl/profile", requireDeviceAuth, async (req, res, next) => {
   try {
-    const ownerId = text(req.body.ownerId, 64);
+    const ownerId = req.device.owner_id;
     if (!ownerId) return res.status(400).json({ error: "ownerId_required" });
     const ownerName = text(req.body.ownerName, 48);
     const ownerTag = friendTag(req.body.ownerTag);
-    const result = await pool.query(
-      "update logs set owner_name = $1, owner_tag = $2 where owner_id = $3",
-      [ownerName, ownerTag, ownerId],
+    const [logResult] = await Promise.all([
+      pool.query("update logs set owner_name = $1, owner_tag = $2 where owner_id = $3", [ownerName, ownerTag, ownerId]),
+      pool.query("update devices set owner_name = $1, owner_tag = $2, updated_at = now() where owner_id = $3", [ownerName, ownerTag, ownerId]),
+    ]);
+    res.json({ updated: logResult.rowCount });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/nibbl/shares/day", requireDeviceAuth, async (req, res, next) => {
+  try {
+    const date = dateFromSlug(text(req.body.date, 32));
+    const token = crypto.randomBytes(18).toString("base64url");
+    await pool.query(
+      `insert into day_shares (token, owner_id, owner_name, owner_tag, log_date)
+       values ($1,$2,$3,$4,$5)`,
+      [token, req.device.owner_id, req.device.owner_name, req.device.owner_tag, date],
     );
-    res.json({ updated: result.rowCount });
+    res.status(201).json({
+      token,
+      date,
+      url: `/?s=${encodeURIComponent(token)}`,
+    });
   } catch (error) {
     next(error);
   }
@@ -183,8 +228,21 @@ app.get(["/i/:slug", "/share/:slug"], async (req, res, next) => {
   }
 });
 
+app.get("/s/:token", async (req, res, next) => {
+  try {
+    const share = await shareByToken(req.params.token);
+    res.send(renderSharePage(await safeDayPayload(share.log_date), share.log_date, share));
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/", async (req, res, next) => {
   try {
+    if (req.query.s) {
+      const share = await shareByToken(String(req.query.s));
+      return res.send(renderSharePage(await safeDayPayload(share.log_date), share.log_date, share));
+    }
     if (req.query.i || req.query.invite || req.query.token) {
       const date = dateFromSlug(String(req.query.i || req.query.invite || req.query.token));
       return res.send(renderSharePage(await safeDayPayload(date), date));
@@ -258,6 +316,23 @@ async function bootstrap() {
       slug text not null,
       visited_at timestamptz not null default now()
     );
+    create table if not exists devices (
+      owner_id text primary key,
+      owner_name text not null default '',
+      owner_tag text not null default '',
+      token_hash text not null unique,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create table if not exists day_shares (
+      token text primary key,
+      owner_id text not null,
+      owner_name text not null default '',
+      owner_tag text not null default '',
+      log_date date not null,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists day_shares_date_idx on day_shares(log_date);
   `);
 }
 
@@ -297,6 +372,25 @@ async function dayPayload(date) {
     [date],
   );
   return { date, logs: rows.map(rowToLog) };
+}
+
+async function shareByToken(token) {
+  const cleanToken = String(token || "").trim();
+  if (!/^[a-zA-Z0-9_-]{16,80}$/.test(cleanToken)) {
+    const error = new Error("Share not found");
+    error.status = 404;
+    throw error;
+  }
+  const { rows } = await pool.query("select token, owner_id, owner_name, owner_tag, log_date from day_shares where token = $1", [cleanToken]);
+  if (!rows.length) {
+    const error = new Error("Share not found");
+    error.status = 404;
+    throw error;
+  }
+  return {
+    ...rows[0],
+    log_date: normalizeDateValue(rows[0].log_date),
+  };
 }
 
 function rowToLog(row) {
@@ -354,19 +448,31 @@ function objectUrl(key) {
   return s3PublicBaseUrl ? `${s3PublicBaseUrl}/${key}` : `/objects/${key}`;
 }
 
-function renderSharePage(day, date) {
+function renderSharePage(day, date, share = null) {
   const cards = day.logs.map((log) => `
     <article class="card">
       ${log.imageUrl ? `<img src="${escapeHtml(log.imageUrl)}" alt="">` : `<div class="placeholder">Nibbl</div>`}
       <div><strong>${escapeHtml(log.title || "Food + drink")}</strong><span>${escapeHtml(log.cafe || log.locationName || "Saved moment")}</span></div>
     </article>
   `).join("");
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nibbl ${escapeHtml(date)}</title><link rel="stylesheet" href="/styles.css"></head><body><main><section class="hero compact"><div class="mark">N</div><h1>${escapeHtml(date)}</h1><p>${day.logs.length ? `${day.logs.length} saved food and drink moments.` : "No public logs have synced for this day yet."}</p></section><section class="share-grid">${cards}</section></main></body></html>`;
+  const owner = share?.owner_name || share?.owner_tag || "";
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nibbl ${escapeHtml(date)}</title><link rel="stylesheet" href="/styles.css"></head><body><main><section class="hero compact"><div class="mark">N</div><h1>${escapeHtml(date)}</h1><p>${owner ? `${escapeHtml(owner)} shared this day. ` : ""}${day.logs.length ? `${day.logs.length} saved food and drink moments.` : "No public logs have synced for this day yet."}</p></section><section class="share-grid">${cards}</section></main></body></html>`;
 }
 
-function requireIngestKey(req, res, next) {
-  if (!ingestKey || req.header("X-Nibbl-Key") !== ingestKey) return res.status(403).json({ error: "invalid_ingest_key" });
-  next();
+async function requireDeviceAuth(req, res, next) {
+  try {
+    const token = bearerToken(req);
+    if (!token) return res.status(401).json({ error: "missing_device_token" });
+    const { rows } = await pool.query(
+      "select owner_id, owner_name, owner_tag from devices where token_hash = $1",
+      [tokenHashFor(token)],
+    );
+    if (!rows.length) return res.status(403).json({ error: "invalid_device_token" });
+    req.device = rows[0];
+    next();
+  } catch (error) {
+    next(error);
+  }
 }
 
 function requireAdmin(req, res, next) {
@@ -378,6 +484,39 @@ function requireAdmin(req, res, next) {
     return res.status(401).end();
   }
   next();
+}
+
+function securityHeaders(_req, res, next) {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'");
+  next();
+}
+
+function rateLimit(req, res, next) {
+  const key = `${req.ip}:${req.path}`;
+  const now = Date.now();
+  const windowMs = req.path.includes("/devices/register") || req.path.includes("/ingest") ? 60_000 : 30_000;
+  const limit = req.path.includes("/devices/register") ? 12 : req.path.includes("/ingest") ? 30 : 180;
+  const bucket = rateBuckets.get(key) || { count: 0, resetAt: now + windowMs };
+  if (bucket.resetAt <= now) {
+    bucket.count = 0;
+    bucket.resetAt = now + windowMs;
+  }
+  bucket.count += 1;
+  rateBuckets.set(key, bucket);
+  if (bucket.count > limit) return res.status(429).json({ error: "rate_limited" });
+  next();
+}
+
+function bearerToken(req) {
+  const auth = req.header("authorization") || "";
+  return auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
+}
+
+function tokenHashFor(token) {
+  return crypto.createHash("sha256").update(String(token)).digest("hex");
 }
 
 function parseBody(body) {
@@ -430,6 +569,11 @@ function dateFromSlug(slug) {
   if (/^\d{8}$/.test(compact)) return `${compact.slice(0, 4)}-${compact.slice(4, 6)}-${compact.slice(6, 8)}`;
   if (/^\d{4}-\d{2}-\d{2}$/.test(compact)) return compact;
   return new Date().toISOString().slice(0, 10);
+}
+
+function normalizeDateValue(value) {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value || "").slice(0, 10);
 }
 
 function extensionFor(file) {

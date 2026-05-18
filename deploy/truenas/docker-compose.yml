@@ -10,7 +10,6 @@ services:
       TZ: Australia/Sydney
       PORT: 8090
       DATABASE_URL: postgres://nibbl:${POSTGRES_PASSWORD:?set-postgres-password}@postgres:5432/nibbl
-      NIBBL_INGEST_KEY: ${NIBBL_INGEST_KEY:?set-a-long-random-ingest-key}
       NIBBL_ADMIN_PASSWORD: ${NIBBL_ADMIN_PASSWORD:?set-admin-password}
       OBJECT_STORAGE: s3
       S3_ENDPOINT: http://minio:9000

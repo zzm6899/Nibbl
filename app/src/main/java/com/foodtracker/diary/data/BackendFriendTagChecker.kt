@@ -1,6 +1,5 @@
 package com.foodtracker.diary.data
 
-import au.z2hs.nibbl.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -28,8 +27,7 @@ object BackendFriendTagChecker {
     }
 
     suspend fun updateOwnerProfile(shareHost: String, settings: AppSettings): Boolean = withContext(Dispatchers.IO) {
-        val ingestKey = BuildConfig.NIBBL_INGEST_KEY
-        if (ingestKey.isBlank() || settings.ownerId.isBlank()) return@withContext false
+        if (settings.apiToken.isBlank() || settings.ownerId.isBlank()) return@withContext false
 
         runCatching {
             val endpoint = "${ShareLinkTokenHelper.normalizeShareHost(shareHost)}/api/nibbl/profile"
@@ -39,7 +37,7 @@ object BackendFriendTagChecker {
                 readTimeout = 8_000
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json")
-                setRequestProperty("X-Nibbl-Key", ingestKey)
+                setRequestProperty("Authorization", "Bearer ${settings.apiToken}")
             }
 
             val payload = JSONObject()

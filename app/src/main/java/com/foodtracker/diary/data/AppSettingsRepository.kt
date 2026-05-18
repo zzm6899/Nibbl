@@ -15,6 +15,7 @@ data class AppSettings(
     val displayName: String = DEFAULT_DISPLAY_NAME,
     val username: String = "",
     val profileImagePath: String? = null,
+    val apiToken: String = "",
     val shareHost: String = ShareLinkTokenHelper.DEFAULT_SHARE_HOST,
     val hasSeenOnboarding: Boolean = false,
 ) {
@@ -114,6 +115,7 @@ private fun AppSettings.toJson(): JSONObject = JSONObject()
     .put("displayName", displayName)
     .put("username", username)
     .put("profileImagePath", profileImagePath ?: JSONObject.NULL)
+    .put("apiToken", apiToken)
     .put("shareHost", shareHost)
     .put("hasSeenOnboarding", hasSeenOnboarding)
 
@@ -132,6 +134,7 @@ private fun JSONObject.toAppSettings(): AppSettings =
         profileImagePath = optNonBlankString("profileImagePath")
             ?: optNonBlankString("avatarPath")
             ?: optNonBlankString("photoPath"),
+        apiToken = optNonBlankString("apiToken") ?: "",
         shareHost = optNonBlankString("shareHost")
             ?: optNonBlankString("host")
             ?: ShareLinkTokenHelper.DEFAULT_SHARE_HOST,

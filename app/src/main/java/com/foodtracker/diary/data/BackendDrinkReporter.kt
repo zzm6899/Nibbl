@@ -1,6 +1,5 @@
 package com.foodtracker.diary.data
 
-import au.z2hs.nibbl.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -12,8 +11,8 @@ import java.net.URL
 
 class BackendDrinkReporter {
     suspend fun submit(shareHost: String, log: FoodLog, settings: AppSettings? = null) = withContext(Dispatchers.IO) {
-        val ingestKey = BuildConfig.NIBBL_INGEST_KEY
-        if (ingestKey.isBlank()) return@withContext
+        val apiToken = settings?.apiToken.orEmpty()
+        if (apiToken.isBlank()) return@withContext
 
         runCatching {
             val endpoint = "${ShareLinkTokenHelper.normalizeShareHost(shareHost)}/api/nibbl/ingest"
@@ -24,7 +23,7 @@ class BackendDrinkReporter {
                 readTimeout = 20_000
                 doOutput = true
                 setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
-                setRequestProperty("X-Nibbl-Key", ingestKey)
+                setRequestProperty("Authorization", "Bearer $apiToken")
             }
 
             DataOutputStream(connection.outputStream).use { output ->
