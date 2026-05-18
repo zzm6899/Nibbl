@@ -299,6 +299,7 @@ app.get(["/i/:slug", "/share/:slug"], async (req, res, next) => {
 app.get("/s/:token", async (req, res, next) => {
   try {
     const share = await shareByToken(req.params.token);
+    recordShareVisit(share.token);
     res.send(renderSharePage(await safeSharedDayPayload(share), share.log_date, share));
   } catch (error) {
     next(error);
@@ -309,6 +310,7 @@ app.get("/", async (req, res, next) => {
   try {
     if (req.query.s) {
       const share = await shareByToken(String(req.query.s));
+      recordShareVisit(share.token);
       return res.send(renderSharePage(await safeSharedDayPayload(share), share.log_date, share));
     }
     if (req.query.i || req.query.invite || req.query.token) {
@@ -440,8 +442,29 @@ async function safeSharedDayPayload(share) {
 }
 
 async function readStats(includeRecent = false) {
-  const [{ rows: counts }, { rows: categories }, { rows: cafes }, { rows: friends }] = await Promise.all([
-    pool.query("select count(*)::int as entries from logs"),
+  const [
+    { rows: counts },
+    { rows: categories },
+    { rows: cafes },
+    { rows: friends },
+    { rows: devices },
+    { rows: shares },
+    { rows: visits },
+    { rows: imageLogs },
+    { rows: avatarDevices },
+    { rows: recentUploads },
+  ] = await Promise.all([
+    pool.query(`
+      select
+        count(*)::int as entries,
+        count(*) filter (where created_at >= now() - interval '24 hours')::int as entries_today,
+        count(*) filter (where created_at >= now() - interval '7 days')::int as entries_week,
+        count(distinct owner_id)::int as active_loggers,
+        coalesce(sum(case when image_key is not null then 1 else 0 end), 0)::int as image_entries,
+        coalesce(sum(case when original_image_key is not null then 1 else 0 end), 0)::int as original_entries,
+        coalesce(sum(coalesce(caffeine_mg, 0)), 0)::int as caffeine_total
+      from logs
+    `),
     pool.query("select count(distinct category)::int as categories from logs where category <> ''"),
     pool.query("select count(distinct lower(cafe))::int as cafes from logs where cafe <> ''"),
     pool.query(
@@ -451,16 +474,108 @@ async function readStats(includeRecent = false) {
         select owner_tag from logs where owner_tag <> ''
       ) tags`,
     ),
+    pool.query(`
+      select
+        count(*)::int as devices,
+        count(*) filter (where created_at >= now() - interval '7 days')::int as new_devices_week
+      from devices
+    `),
+    pool.query(`
+      select
+        count(*)::int as shares,
+        count(*) filter (where created_at >= now() - interval '7 days')::int as shares_week
+      from day_shares
+    `),
+    pool.query("select count(*)::int as share_visits from share_visits"),
+    pool.query("select count(*)::int as image_logs from logs where image_key is not null"),
+    pool.query("select count(*)::int as avatar_devices from devices where avatar_key is not null"),
+    pool.query("select max(created_at) as last_upload_at from logs"),
   ]);
+  const countRow = counts[0] || {};
   const stats = {
-    entries: counts[0]?.entries || 0,
+    entries: countRow.entries || 0,
+    entriesToday: countRow.entries_today || 0,
+    entriesWeek: countRow.entries_week || 0,
+    activeLoggers: countRow.active_loggers || 0,
+    imageEntries: countRow.image_entries || imageLogs[0]?.image_logs || 0,
+    originalEntries: countRow.original_entries || 0,
+    caffeineTotal: countRow.caffeine_total || 0,
     cafes: cafes[0]?.cafes || 0,
     friends: friends[0]?.friends || 0,
     categories: categories[0]?.categories || 0,
+    devices: devices[0]?.devices || 0,
+    newDevicesWeek: devices[0]?.new_devices_week || 0,
+    shares: shares[0]?.shares || 0,
+    sharesWeek: shares[0]?.shares_week || 0,
+    shareVisits: visits[0]?.share_visits || 0,
+    avatarDevices: avatarDevices[0]?.avatar_devices || 0,
+    lastUploadAt: recentUploads[0]?.last_upload_at || null,
+    health: {
+      database: dbReady ? "ready" : "waiting",
+      objectStorage: objectReady ? "ready" : "waiting",
+      objectMode,
+      publicBaseUrl: s3PublicBaseUrl || "local",
+    },
   };
   if (includeRecent) {
-    const { rows } = await pool.query("select log_date, count(*)::int as total from logs group by log_date order by log_date desc limit 14");
-    stats.recentDays = rows;
+    const [
+      { rows: recentDays },
+      { rows: topCategories },
+      { rows: topCafes },
+      { rows: topFriends },
+      { rows: sourceBreakdown },
+      { rows: recentShares },
+    ] = await Promise.all([
+      pool.query("select log_date, count(*)::int as total from logs group by log_date order by log_date desc limit 14"),
+      pool.query(`
+        select category as label, count(*)::int as total
+        from logs
+        where category <> ''
+        group by category
+        order by total desc, category asc
+        limit 8
+      `),
+      pool.query(`
+        select cafe as label, count(*)::int as total
+        from logs
+        where cafe <> ''
+        group by cafe
+        order by total desc, cafe asc
+        limit 8
+      `),
+      pool.query(`
+        select coalesce(nullif(owner_name, ''), owner_tag, 'Unknown') as label, count(*)::int as total
+        from logs
+        group by label
+        order by total desc, label asc
+        limit 8
+      `),
+      pool.query(`
+        select source as label, count(*)::int as total
+        from logs
+        group by source
+        order by total desc, source asc
+      `),
+      pool.query(`
+        select token, owner_name, owner_tag, log_date, created_at
+        from day_shares
+        order by created_at desc
+        limit 8
+      `),
+    ]);
+    stats.recentDays = recentDays.map((row) => ({ date: normalizeDateValue(row.log_date), total: row.total }));
+    stats.topCategories = topCategories;
+    stats.topCafes = topCafes;
+    stats.topFriends = topFriends;
+    stats.sourceBreakdown = sourceBreakdown;
+    stats.recentShares = recentShares.map((row) => ({
+      token: row.token,
+      ownerName: row.owner_name,
+      ownerTag: row.owner_tag,
+      date: normalizeDateValue(row.log_date),
+      createdAt: row.created_at,
+      url: `/?s=${encodeURIComponent(row.token)}`,
+    }));
   }
   return stats;
 }
@@ -495,6 +610,12 @@ async function shareByToken(token) {
     ...rows[0],
     log_date: normalizeDateValue(rows[0].log_date),
   };
+}
+
+function recordShareVisit(token) {
+  pool.query("insert into share_visits (slug) values ($1)", [token]).catch((error) => {
+    console.error("Share visit tracking failed:", error.message || "share_visit_failed");
+  });
 }
 
 async function assertFriendTagAvailable(ownerTag, ownerId) {

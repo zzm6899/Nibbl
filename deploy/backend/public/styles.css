@@ -434,6 +434,70 @@ a.button.secondary, button.secondary {
   gap: 12px;
 }
 
+.admin-health {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.admin-health div {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-health strong {
+  color: #2b075f;
+  font-size: 20px;
+}
+
+.admin-lists {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.rank-list {
+  display: grid;
+  gap: 8px;
+}
+
+.rank-row,
+.empty-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 38px;
+  padding: 9px 10px;
+  border-radius: 14px;
+  background: #fff7ed;
+  color: #5f6554;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.rank-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #5f6554;
+  font-weight: 800;
+}
+
+.rank-row strong {
+  flex: 0 0 auto;
+  color: #2b075f;
+}
+
+.share-links .rank-row {
+  background: #eaf4d8;
+}
+
+.empty-row {
+  color: #9b7a6b;
+}
+
 table {
   width: 100%;
   min-width: 680px;
@@ -512,7 +576,11 @@ footer a {
     border-radius: 22px;
   }
 
-  .stats, .share-grid, .admin-grid, .feature-grid {
+  .stats, .share-grid, .admin-grid, .feature-grid, .admin-health {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-lists {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -591,7 +659,7 @@ footer a {
     padding: 16px;
   }
 
-  .stats, .share-grid, .admin-grid, .feature-grid {
+  .stats, .share-grid, .admin-grid, .feature-grid, .admin-health, .admin-lists {
     grid-template-columns: 1fr;
   }
 

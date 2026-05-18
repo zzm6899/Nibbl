@@ -15,11 +15,38 @@
         <button id="refresh">Refresh</button>
       </section>
 
+      <section class="panel admin-health" aria-label="Backend health">
+        <div><span>Database</span><strong id="database">-</strong></div>
+        <div><span>Objects</span><strong id="objects">-</strong></div>
+        <div><span>Storage mode</span><strong id="objectMode">-</strong></div>
+        <div><span>Last upload</span><strong id="lastUpload">-</strong></div>
+      </section>
+
       <section class="admin-grid">
         <div class="stat"><strong id="entries">-</strong><span>logs</span></div>
+        <div class="stat"><strong id="entriesToday">-</strong><span>new today</span></div>
+        <div class="stat"><strong id="entriesWeek">-</strong><span>new this week</span></div>
+        <div class="stat"><strong id="devices">-</strong><span>devices</span></div>
+        <div class="stat"><strong id="newDevicesWeek">-</strong><span>new devices week</span></div>
+        <div class="stat"><strong id="activeLoggers">-</strong><span>active loggers</span></div>
+        <div class="stat"><strong id="shares">-</strong><span>day shares</span></div>
+        <div class="stat"><strong id="sharesWeek">-</strong><span>shares this week</span></div>
+        <div class="stat"><strong id="shareVisits">-</strong><span>share visits</span></div>
+        <div class="stat"><strong id="imageEntries">-</strong><span>image logs</span></div>
+        <div class="stat"><strong id="avatarDevices">-</strong><span>profile photos</span></div>
         <div class="stat"><strong id="cafes">-</strong><span>cafes</span></div>
         <div class="stat"><strong id="friends">-</strong><span>friend tags</span></div>
         <div class="stat"><strong id="categories">-</strong><span>categories</span></div>
+        <div class="stat"><strong id="caffeineTotal">-</strong><span>tracked caffeine mg</span></div>
+      </section>
+
+      <section class="admin-lists" aria-label="Admin breakdowns">
+        <div class="panel"><strong>Recent days</strong><div id="recentDays" class="rank-list"></div></div>
+        <div class="panel"><strong>Top categories</strong><div id="topCategories" class="rank-list"></div></div>
+        <div class="panel"><strong>Top cafes</strong><div id="topCafes" class="rank-list"></div></div>
+        <div class="panel"><strong>Top friends</strong><div id="topFriends" class="rank-list"></div></div>
+        <div class="panel"><strong>Sources</strong><div id="sourceBreakdown" class="rank-list"></div></div>
+        <div class="panel"><strong>Recent share links</strong><div id="recentShares" class="rank-list share-links"></div></div>
       </section>
 
       <section class="panel admin-table-panel" style="margin-top: 14px">
@@ -39,9 +66,30 @@
           fetchJson("/api/admin/logs"),
         ]);
         entries.textContent = stats.entries ?? 0;
+        entriesToday.textContent = stats.entriesToday ?? 0;
+        entriesWeek.textContent = stats.entriesWeek ?? 0;
+        devices.textContent = stats.devices ?? 0;
+        newDevicesWeek.textContent = stats.newDevicesWeek ?? 0;
+        activeLoggers.textContent = stats.activeLoggers ?? 0;
+        shares.textContent = stats.shares ?? 0;
+        sharesWeek.textContent = stats.sharesWeek ?? 0;
+        shareVisits.textContent = stats.shareVisits ?? 0;
+        imageEntries.textContent = stats.imageEntries ?? 0;
+        avatarDevices.textContent = stats.avatarDevices ?? 0;
         cafes.textContent = stats.cafes ?? 0;
         friends.textContent = stats.friends ?? 0;
         categories.textContent = stats.categories ?? 0;
+        caffeineTotal.textContent = stats.caffeineTotal ?? 0;
+        database.textContent = stats.health?.database || "-";
+        objects.textContent = stats.health?.objectStorage || "-";
+        objectMode.textContent = stats.health?.objectMode || "-";
+        lastUpload.textContent = stats.lastUploadAt ? new Date(stats.lastUploadAt).toLocaleString() : "None yet";
+        renderRankList("recentDays", (stats.recentDays || []).map((item) => ({ label: item.date, total: item.total })));
+        renderRankList("topCategories", stats.topCategories || []);
+        renderRankList("topCafes", stats.topCafes || []);
+        renderRankList("topFriends", stats.topFriends || []);
+        renderRankList("sourceBreakdown", stats.sourceBreakdown || []);
+        renderShares(stats.recentShares || []);
         document.getElementById("logs").innerHTML = (Array.isArray(logs) ? logs : []).map((log) => `
           <tr>
             <td>${new Date(log.timestamp).toLocaleString()}</td>
@@ -61,6 +109,21 @@
           throw new Error(`Request failed: ${response.status}`);
         }
         return response.json();
+      }
+
+      function renderRankList(id, rows) {
+        document.getElementById(id).innerHTML = rows.length ? rows.map((row) => `
+          <div class="rank-row"><span>${escapeHtml(row.label || "Unknown")}</span><strong>${row.total ?? 0}</strong></div>
+        `).join("") : `<div class="empty-row">No data yet</div>`;
+      }
+
+      function renderShares(rows) {
+        document.getElementById("recentShares").innerHTML = rows.length ? rows.map((row) => `
+          <a class="rank-row" href="${escapeHtml(row.url)}">
+            <span>${escapeHtml(row.ownerName || row.ownerTag || "Unknown")} · ${escapeHtml(row.date || "")}</span>
+            <strong>Open</strong>
+          </a>
+        `).join("") : `<div class="empty-row">No shares yet</div>`;
       }
 
       function escapeHtml(value) {
