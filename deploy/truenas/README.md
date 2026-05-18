@@ -2,74 +2,58 @@
 
 Domains are fixed to:
 
-- App/site: `https://nibbl.z2hs.au`
+- App/site/share pages: `https://nibbl.z2hs.au`
 - API/admin: `https://api.nibbl.z2hs.au`
 
-This stack runs PocketBase on host port `5100`. Your existing Caddy routes both Nibbl domains to `172.20.20.251:5100`.
+This stack runs the Nibbl backend on host port `5100`, Postgres for authoritative data, and MinIO for object storage. Your existing Caddy routes both Nibbl domains to `172.20.20.251:5100`.
 
 ## TrueNAS Scale
 
 1. Create this dataset layout:
    - `/mnt/mainstorage/apps/nibbl`
-   - `/mnt/mainstorage/apps/nibbl/pb_data`
+   - `/mnt/mainstorage/apps/nibbl/postgres`
+   - `/mnt/mainstorage/apps/nibbl/objects`
 2. Put `deploy/truenas/docker-compose.yml` and your `.env` into `/mnt/mainstorage/apps/nibbl`.
-3. Create a local `.env` beside `docker-compose.yml` with a new ingest key:
+3. Create `.env` beside `docker-compose.yml`:
 
 ```env
 NIBBL_INGEST_KEY=replace-with-a-long-random-value
+NIBBL_ADMIN_PASSWORD=replace-with-an-admin-password
+POSTGRES_PASSWORD=replace-with-a-postgres-password
+MINIO_ROOT_USER=nibblminio
+MINIO_ROOT_PASSWORD=replace-with-a-minio-password
 ```
 
-Build the Android APK with the same value:
+Build the Android APK with the same ingest key:
 
 ```powershell
 .\gradlew.bat assembleDebug -PNIBBL_INGEST_KEY="your-long-random-value"
 ```
 
-4. Point DNS:
-   - `nibbl.z2hs.au` -> your TrueNAS IP/public proxy
-   - `api.nibbl.z2hs.au` -> your TrueNAS IP/public proxy
-5. In TrueNAS Apps, create a custom app from `docker-compose.yml`. The public website and PocketBase hooks are baked into the Docker image, so do not mount `pb_public` or `pb_hooks` over the container paths.
-6. Open the admin UI:
-   - `https://api.nibbl.z2hs.au/_/`
-7. Health check:
-   - `https://api.nibbl.z2hs.au/api/health`
+4. In TrueNAS Apps, create or update the custom app from `docker-compose.yml`.
+5. Open:
+   - Public site: `https://nibbl.z2hs.au/`
+   - Share links: `https://nibbl.z2hs.au/?i=YYYYMMDD-token`
+   - Admin UI: `https://api.nibbl.z2hs.au/admin.html`
+   - Health: `https://api.nibbl.z2hs.au/api/health`
+   - MinIO console: `http://<truenas-ip>:5101`
 
-## Admin Setup
+## Reload
 
-PocketBase asks you to create the first admin account the first time you open `/_/`.
-
-After that, create these collections:
-
-- `profiles`: display name, avatar color.
-- `friends`: owner, display name, avatar, color, favorite flag.
-- `logs`: owner, date, title, category, caffeine, cafe, location, image.
-- `day_shares`: owner, date, token, access mode, expiry.
-
-Current Android behavior creates signed day invite URLs locally. The backend is ready for the next step: resolving those invite URLs into real shared day pages and syncing logs across users.
+```bash
+cd /mnt/mainstorage/apps/nibbl
+docker compose pull
+docker compose up -d --force-recreate
+```
 
 ## External Caddy
-
-Your external Caddy config should be:
 
 ```caddyfile
 nibbl.z2hs.au {
     reverse_proxy 172.20.20.251:5100
 }
+
 api.nibbl.z2hs.au {
     reverse_proxy 172.20.20.251:5100
 }
-```
-
-## Local Script
-
-From this folder on a Docker host:
-
-```powershell
-.\scripts\run-admin-ui.ps1
-```
-
-or:
-
-```bash
-docker compose up -d
 ```

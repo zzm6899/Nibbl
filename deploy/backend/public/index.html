@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nibbl</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <div class="mark" aria-hidden="true">N</div>
+        <h1>Nibbl</h1>
+        <p>A cute food and drink diary for saving cafe days, drink photos, shared albums, and tiny cravings.</p>
+        <p id="invite" class="invite" hidden>Nibbl invite found. Open this link on your phone after installing the app.</p>
+        <a class="button" href="/admin.html">Open admin</a>
+      </section>
+
+      <section class="stats" aria-label="Nibbl stats">
+        <div class="stat"><strong id="entries">-</strong><span>saved bites</span></div>
+        <div class="stat"><strong id="cafes">-</strong><span>cafes</span></div>
+        <div class="stat"><strong id="friends">-</strong><span>friends tagged</span></div>
+        <div class="stat"><strong id="categories">-</strong><span>food types</span></div>
+      </section>
+    </main>
+    <script>
+      const path = window.location.pathname;
+      const params = new URLSearchParams(window.location.search);
+      const invite = document.getElementById("invite");
+      if (params.has("friend") || params.has("crew")) {
+        const name = params.get("name") || "this friend";
+        invite.textContent = `Friend tag invite for ${name}. Open this link on your phone to tag shared food and drink logs together.`;
+        invite.hidden = false;
+      } else if (path.startsWith("/i/") || params.has("i") || params.has("invite")) {
+        invite.hidden = false;
+      }
+
+      fetch("/api/nibbl/stats")
+        .then((response) => response.ok ? response.json() : null)
+        .then((stats) => {
+          if (!stats) return;
+          entries.textContent = stats.entries ?? 0;
+          cafes.textContent = stats.cafes ?? 0;
+          friends.textContent = stats.friends ?? 0;
+          categories.textContent = stats.categories ?? 0;
+        })
+        .catch(() => {});
+    </script>
+  </body>
+</html>

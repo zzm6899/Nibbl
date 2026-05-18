@@ -136,13 +136,15 @@ import java.util.UUID
 
 class MainActivity : ComponentActivity() {
     private var deepLinkUrl by mutableStateOf<String?>(null)
+    private var sharedImageUri by mutableStateOf<Uri?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         deepLinkUrl = intent?.dataString
+        sharedImageUri = intent?.nibblSharedImageUri()
         setContent {
             FoodDiaryTheme {
-                DiaryApp(deepLinkUrl)
+                DiaryApp(deepLinkUrl, sharedImageUri)
             }
         }
     }
@@ -150,6 +152,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         deepLinkUrl = intent.dataString
+        sharedImageUri = intent.nibblSharedImageUri()
     }
 }
 
@@ -164,7 +167,7 @@ private data class PendingLog(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DiaryApp(deepLinkUrl: String? = null) {
+private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { FoodLogRepository(context) }
@@ -297,6 +300,14 @@ private fun DiaryApp(deepLinkUrl: String? = null) {
             mode = CalendarMode.Day
             section = AppSection.Diary
         }
+    }
+
+    LaunchedEffect(sharedImageUri) {
+        val uri = sharedImageUri ?: return@LaunchedEffect
+        selectedDate = LocalDate.now()
+        mode = CalendarMode.Day
+        section = AppSection.Diary
+        importImage(uri)
     }
 
     Scaffold(
@@ -1893,6 +1904,18 @@ private fun shareInviteLink(context: Context, url: String) {
         putExtra(Intent.EXTRA_TEXT, url)
     }
     context.startActivity(Intent.createChooser(sendIntent, "Share Nibbl invite"))
+}
+
+@Suppress("DEPRECATION")
+private fun Intent.nibblSharedImageUri(): Uri? {
+    val isImage = type.orEmpty().startsWith("image/")
+    return when {
+        action == Intent.ACTION_SEND && isImage ->
+            getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
+        action == Intent.ACTION_SEND_MULTIPLE && isImage ->
+            getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)?.firstOrNull()
+        else -> null
+    }
 }
 
 @Composable

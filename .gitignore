@@ -6,3 +6,4 @@ app/build/
 local.properties
 *.iml
 screen-*.png
+node_modules/

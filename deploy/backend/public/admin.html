@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nibbl Admin</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <section class="hero compact">
+        <div class="mark" aria-hidden="true">N</div>
+        <h1>Admin</h1>
+        <p>Backend stats, recent synced logs, friend tags, and storage health for your self-hosted Nibbl.</p>
+        <button id="refresh">Refresh</button>
+      </section>
+
+      <section class="admin-grid">
+        <div class="stat"><strong id="entries">-</strong><span>logs</span></div>
+        <div class="stat"><strong id="cafes">-</strong><span>cafes</span></div>
+        <div class="stat"><strong id="friends">-</strong><span>friend tags</span></div>
+        <div class="stat"><strong id="categories">-</strong><span>categories</span></div>
+      </section>
+
+      <section class="panel" style="margin-top: 14px">
+        <strong>Recent uploads</strong>
+        <table>
+          <thead>
+            <tr><th>When</th><th>Owner</th><th>Food + drink</th><th>Cafe</th><th>Type</th></tr>
+          </thead>
+          <tbody id="logs"></tbody>
+        </table>
+      </section>
+    </main>
+    <script>
+      async function load() {
+        const [stats, logs] = await Promise.all([
+          fetch("/api/admin/stats").then((r) => r.json()),
+          fetch("/api/admin/logs").then((r) => r.json()),
+        ]);
+        entries.textContent = stats.entries ?? 0;
+        cafes.textContent = stats.cafes ?? 0;
+        friends.textContent = stats.friends ?? 0;
+        categories.textContent = stats.categories ?? 0;
+        document.getElementById("logs").innerHTML = logs.map((log) => `
+          <tr>
+            <td>${new Date(log.timestamp).toLocaleString()}</td>
+            <td>${escapeHtml(log.ownerName || log.ownerTag || "Unknown")}</td>
+            <td>${escapeHtml(log.title || "Food + drink")}</td>
+            <td>${escapeHtml(log.cafe || log.locationName || "")}</td>
+            <td>${escapeHtml(log.category || "")}</td>
+          </tr>
+        `).join("");
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+        }[char]));
+      }
+
+      refresh.addEventListener("click", load);
+      load().catch((error) => {
+        document.getElementById("logs").innerHTML = `<tr><td colspan="5">${escapeHtml(error.message)}</td></tr>`;
+      });
+    </script>
+  </body>
+</html>

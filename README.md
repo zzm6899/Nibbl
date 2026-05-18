@@ -1,27 +1,25 @@
 # Nibbl
 
-A cute food and drink diary Android app for caffeine, cafe, matcha, snack, and meal photo logs.
+A cute food and drink diary Android app for caffeine, cafe, snack, meal, and drink photo logs.
 
 ## Features
 
 - Month, week, and day calendar views.
 - Camera capture and gallery import.
-- ML Kit subject segmentation to remove image backgrounds and save transparent PNG cutouts.
+- Subject cutouts that remove image backgrounds and save transparent PNGs.
+- Android share-sheet intake: share an image from Photos to Nibbl to start a log for today.
 - Multiple entries in the same calendar day, shown left to right in chronological order.
-- Animated cutout progress while ML Kit removes the background, including a visible original-photo peel effect.
+- Animated cutout progress while Nibbl removes the background, including a visible original-photo peel effect.
 - Before/after review so the user can compare the source image with the transparent cutout before saving.
 - Entry metadata for cafe, location hint, category, caffeine amount, and cafe friends.
 - Friend chips and avatars for shared food and drink logs.
 - Friend/category filters, summary stats, details, repeat logging, and safe delete.
 - Local JSON persistence in app-private storage.
+- Self-hosted backend with Postgres, object storage, share pages, and an admin dashboard.
 
 ## Android Notes
 
-The background removal uses Google ML Kit Subject Segmentation, which is the Android/Google Play services subject-removal tool used here:
-
-- Dependency: `com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1`
-- Minimum SDK: 24
-- The segmentation model is downloaded by Google Play services. First use can take longer while the model initializes.
+Minimum SDK: 24. The first background cutout can take longer while the on-device subject-removal module initializes.
 
 Open the project in Android Studio, let it create `local.properties` with your SDK path, then run the `app` configuration.
 
