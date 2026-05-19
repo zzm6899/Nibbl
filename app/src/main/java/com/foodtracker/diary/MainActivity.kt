@@ -220,6 +220,14 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
             (selectedCategory == null || log.category == selectedCategory)
     }
 
+    fun showLogImmediately(log: FoodLog) {
+        logs = (logs.filterNot { it.id == log.id } + log).sortedBy { it.timestamp }
+    }
+
+    fun hideLogImmediately(id: String) {
+        logs = logs.filterNot { it.id == id }
+    }
+
     suspend fun refresh() {
         logs = repository.logs()
         settings = settingsRepository.settings()
@@ -267,6 +275,13 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
         backendDrinkReporter.submit(registered.shareHost, log, registered)
     }
 
+    fun submitLogInBackground(log: FoodLog) {
+        scope.launch {
+            runCatching { submitLog(log) }
+                .onFailure { error = "Saved locally. Sync will retry when your server is reachable." }
+        }
+    }
+
     suspend fun createPublicDayShare(date: LocalDate): String? {
         val registered = ensureRegisteredSettings()
         repository.logsForDate(repository.logs(), date).forEach { log ->
@@ -310,8 +325,8 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
             timestamp = selectedDate.atTime(LocalTime.now()).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
         )
         repository.save(repeated)
-        submitLog(repeated)
-        refresh()
+        showLogImmediately(repeated)
+        submitLogInBackground(repeated)
         mode = CalendarMode.Day
     }
 
@@ -626,10 +641,11 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                         friendNames = friends,
                     )
                     repository.save(log)
-                    submitLog(log)
+                    showLogImmediately(log)
                     selectedDate = LocalDate.now()
+                    mode = CalendarMode.Day
                     pending = null
-                    refresh()
+                    submitLogInBackground(log)
                 }
             },
             crewNames = crew.map { it.displayName },
@@ -654,8 +670,8 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
             onDelete = {
                 scope.launch {
                     repository.delete(log.id)
+                    hideLogImmediately(log.id)
                     detailLog = null
-                    refresh()
                 }
             },
         )
@@ -670,8 +686,9 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
             onSave = { updated ->
                 scope.launch {
                     repository.update(updated)
+                    showLogImmediately(updated)
                     editLog = null
-                    refresh()
+                    submitLogInBackground(updated)
                 }
             },
         )
