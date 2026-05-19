@@ -144,6 +144,48 @@ main {
   min-height: 30vh;
 }
 
+.admin-page {
+  width: min(1240px, calc(100vw - 32px));
+  padding-top: 22px;
+}
+
+.admin-hero {
+  min-height: auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 0 18px;
+}
+
+.admin-hero .mark {
+  width: 68px;
+  height: 68px;
+  border-radius: 20px;
+}
+
+.admin-hero h1 {
+  font-size: clamp(42px, 7vw, 74px);
+  line-height: .9;
+  margin: 0;
+}
+
+.admin-hero p {
+  max-width: 720px;
+  margin: 0;
+}
+
+.admin-actions {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.admin-refresh-time {
+  color: #8f7466;
+  font-size: 13px;
+  font-weight: 850;
+}
+
 .hero-copy {
   display: grid;
   gap: 16px;
@@ -892,56 +934,91 @@ a.button.secondary, button.secondary {
 
 .admin-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 9px;
 }
 
 .admin-grid .stat {
-  min-height: 92px;
-  padding: 16px;
+  min-height: 78px;
+  padding: 13px 14px;
+  display: grid;
+  align-content: space-between;
+  background: rgba(255,253,248,.86);
 }
 
 .admin-grid .stat strong {
-  font-size: 26px;
+  order: 2;
+  font-size: clamp(23px, 3vw, 32px);
+  line-height: 1;
 }
 
 .admin-grid .stat span {
+  order: 1;
   display: block;
-  margin-top: 4px;
   line-height: 1.25;
+  color: #8f7466;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.admin-grid .stat.primary {
+  grid-column: span 2;
+  background: linear-gradient(135deg, #fff0b8 0%, #eaf4d8 100%);
 }
 
 .admin-health {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: 12px;
-  padding: 16px;
+  margin-bottom: 10px;
+  padding: 12px;
+  gap: 10px;
 }
 
 .admin-health div {
   display: grid;
   gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255,253,248,.62);
 }
 
 .admin-health strong {
   color: #2b075f;
-  font-size: 18px;
+  font-size: 16px;
   animation: numberPop .5s ease both;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-health span {
+  color: #e87979;
+  font-size: 12px;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0;
 }
 
 .admin-lists {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 12px;
   margin-top: 14px;
 }
 
 .admin-lists .panel {
-  grid-column: span 2;
-  min-height: 190px;
+  grid-column: span 4;
+  min-height: 178px;
+  padding: 16px;
 }
 
 .admin-lists .panel:nth-child(6) {
-  grid-column: span 4;
+  grid-column: span 5;
+}
+
+.admin-lists .panel:nth-child(7) {
+  grid-column: span 3;
 }
 
 .rank-list {
@@ -1008,7 +1085,22 @@ table {
 }
 
 .admin-table-panel {
+  margin-top: 14px;
   overflow-x: auto;
+  padding: 16px;
+}
+
+.panel-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-title span {
+  color: #8f7466;
+  font-size: 13px;
+  font-weight: 850;
 }
 
 th, td {
@@ -1271,6 +1363,22 @@ footer a {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .admin-hero {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .admin-actions {
+    grid-column: 1 / -1;
+    justify-items: stretch;
+  }
+
+  .admin-grid .stat.primary,
+  .admin-lists .panel,
+  .admin-lists .panel:nth-child(6),
+  .admin-lists .panel:nth-child(7) {
+    grid-column: span 1;
+  }
+
   .workflow-section {
     grid-template-columns: 1fr;
     gap: 16px;
@@ -1378,6 +1486,15 @@ footer a {
 
   .stats, .share-grid, .admin-grid, .feature-grid, .admin-health, .admin-lists {
     grid-template-columns: 1fr;
+  }
+
+  .admin-page {
+    width: min(100vw - 20px, 1240px);
+  }
+
+  .admin-hero {
+    grid-template-columns: 1fr;
+    justify-items: start;
   }
 
   .phone-card {

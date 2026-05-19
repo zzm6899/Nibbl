@@ -1281,15 +1281,17 @@ private fun SettingsScreen(
                 }
             }
         }
-        item {
-            MonetizationCard(
-                settings = settings,
-                customCategoryCount = categories.count { !it.builtIn },
-                billingState = billingState,
-                billingMessage = billingMessage,
-                onBuyProduct = onBuyProduct,
-                onRestorePurchases = onRestorePurchases,
-            )
+        if (!settings.plusUnlocked && !settings.proActive) {
+            item {
+                MonetizationCard(
+                    settings = settings,
+                    customCategoryCount = categories.count { !it.builtIn },
+                    billingState = billingState,
+                    billingMessage = billingMessage,
+                    onBuyProduct = onBuyProduct,
+                    onRestorePurchases = onRestorePurchases,
+                )
+            }
         }
     }
 }

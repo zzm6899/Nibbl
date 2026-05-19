@@ -7,12 +7,18 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main>
-      <section class="hero compact">
+    <main class="admin-page">
+      <section class="hero compact admin-hero">
         <div class="mark logo-mark" aria-hidden="true"><span class="cup-face"></span></div>
-        <h1>Admin</h1>
-        <p>Backend stats, recent synced logs, friend tags, and storage health for your self-hosted Nibbl.</p>
-        <button id="refresh">Refresh</button>
+        <div>
+          <p class="eyebrow">Nibbl backend</p>
+          <h1>Admin</h1>
+          <p>Health, activity, sharing, and recent synced food + drink logs.</p>
+        </div>
+        <div class="admin-actions">
+          <button id="refresh">Refresh</button>
+          <span id="refreshedAt" class="admin-refresh-time">Not loaded yet</span>
+        </div>
       </section>
 
       <section class="panel admin-health" aria-label="Backend health">
@@ -22,23 +28,23 @@
         <div><span>Last upload</span><strong id="lastUpload">-</strong></div>
       </section>
 
-      <section class="admin-grid">
-        <div class="stat"><strong id="entries">-</strong><span>logs</span></div>
-        <div class="stat"><strong id="entriesToday">-</strong><span>new today</span></div>
-        <div class="stat"><strong id="entriesWeek">-</strong><span>new this week</span></div>
-        <div class="stat"><strong id="devices">-</strong><span>devices</span></div>
-        <div class="stat"><strong id="newDevicesWeek">-</strong><span>new devices week</span></div>
-        <div class="stat"><strong id="activeLoggers">-</strong><span>active loggers</span></div>
-        <div class="stat"><strong id="shares">-</strong><span>day shares</span></div>
-        <div class="stat"><strong id="sharesWeek">-</strong><span>shares this week</span></div>
-        <div class="stat"><strong id="shareVisits">-</strong><span>share visits</span></div>
-        <div class="stat"><strong id="waitlistSignups">-</strong><span>waitlist signups</span></div>
-        <div class="stat"><strong id="imageEntries">-</strong><span>image logs</span></div>
-        <div class="stat"><strong id="avatarDevices">-</strong><span>profile photos</span></div>
-        <div class="stat"><strong id="cafes">-</strong><span>cafes</span></div>
-        <div class="stat"><strong id="friends">-</strong><span>friend tags</span></div>
-        <div class="stat"><strong id="categories">-</strong><span>categories</span></div>
-        <div class="stat"><strong id="caffeineTotal">-</strong><span>tracked caffeine mg</span></div>
+      <section class="admin-grid" aria-label="Backend stats">
+        <div class="stat primary"><span>Total logs</span><strong id="entries">-</strong></div>
+        <div class="stat"><span>Today</span><strong id="entriesToday">-</strong></div>
+        <div class="stat"><span>This week</span><strong id="entriesWeek">-</strong></div>
+        <div class="stat"><span>Active loggers</span><strong id="activeLoggers">-</strong></div>
+        <div class="stat"><span>Devices</span><strong id="devices">-</strong></div>
+        <div class="stat"><span>New devices</span><strong id="newDevicesWeek">-</strong></div>
+        <div class="stat"><span>Day shares</span><strong id="shares">-</strong></div>
+        <div class="stat"><span>Share visits</span><strong id="shareVisits">-</strong></div>
+        <div class="stat"><span>Image logs</span><strong id="imageEntries">-</strong></div>
+        <div class="stat"><span>Profile photos</span><strong id="avatarDevices">-</strong></div>
+        <div class="stat"><span>Cafes</span><strong id="cafes">-</strong></div>
+        <div class="stat"><span>Friends</span><strong id="friends">-</strong></div>
+        <div class="stat"><span>Categories</span><strong id="categories">-</strong></div>
+        <div class="stat"><span>Waitlist</span><strong id="waitlistSignups">-</strong></div>
+        <div class="stat"><span>Caffeine mg</span><strong id="caffeineTotal">-</strong></div>
+        <div class="stat"><span>Shares week</span><strong id="sharesWeek">-</strong></div>
       </section>
 
       <section class="admin-lists" aria-label="Admin breakdowns">
@@ -51,8 +57,8 @@
         <div class="panel"><strong>Waitlist</strong><div id="recentWaitlist" class="rank-list"></div></div>
       </section>
 
-      <section class="panel admin-table-panel" style="margin-top: 14px">
-        <strong>Recent uploads</strong>
+      <section class="panel admin-table-panel">
+        <div class="panel-title"><strong>Recent uploads</strong><span>Latest synced app entries</span></div>
         <table>
           <thead>
             <tr><th>When</th><th>Owner</th><th>Food + drink</th><th>Cafe</th><th>Type</th></tr>
@@ -63,10 +69,14 @@
     </main>
     <script>
       async function load() {
-        const [stats, logs] = await Promise.all([
-          fetchJson("/api/admin/stats"),
-          fetchJson("/api/admin/logs"),
-        ]);
+        const refreshButton = document.getElementById("refresh");
+        refreshButton.disabled = true;
+        refreshButton.textContent = "Refreshing";
+        try {
+          const [stats, logs] = await Promise.all([
+            fetchJson("/api/admin/stats"),
+            fetchJson("/api/admin/logs"),
+          ]);
         setText("entries", stats.entries ?? 0);
         setText("entriesToday", stats.entriesToday ?? 0);
         setText("entriesWeek", stats.entriesWeek ?? 0);
@@ -103,6 +113,11 @@
             <td>${escapeHtml(log.category || "")}</td>
           </tr>
         `).join("");
+        setText("refreshedAt", `Updated ${formatSydneyTime(new Date().toISOString())}`);
+        } finally {
+          refreshButton.disabled = false;
+          refreshButton.textContent = "Refresh";
+        }
       }
 
       async function fetchJson(url) {
@@ -166,10 +181,14 @@
         }[char]));
       }
 
-      refresh.addEventListener("click", load);
-      load().catch((error) => {
+      const refresh = document.getElementById("refresh");
+      refresh.addEventListener("click", () => load().catch(showError));
+      load().catch(showError);
+
+      function showError(error) {
         document.getElementById("logs").innerHTML = `<tr><td colspan="5">${escapeHtml(error.message)}</td></tr>`;
-      });
+        setText("refreshedAt", "Could not load");
+      }
     </script>
   </body>
 </html>
