@@ -15,9 +15,10 @@ import java.time.Instant
 import java.time.ZoneId
 
 class BackendDrinkReporter {
-    suspend fun submit(shareHost: String, log: FoodLog, settings: AppSettings? = null) = withContext(Dispatchers.IO) {
+    suspend fun submit(shareHost: String, log: FoodLog, settings: AppSettings? = null): Boolean = withContext(Dispatchers.IO) {
         val apiToken = settings?.apiToken.orEmpty()
-        if (apiToken.isBlank()) return@withContext
+        if (apiToken.isBlank()) return@withContext false
+        if (!File(log.imagePath).isFile) return@withContext false
 
         for (host in ShareLinkTokenHelper.apiHostsFor(shareHost)) {
             val sent = runCatching {
@@ -54,8 +55,9 @@ class BackendDrinkReporter {
                     connection.disconnect()
                 }
             }.getOrDefault(false)
-            if (sent) return@withContext
+            if (sent) return@withContext true
         }
+        false
     }
 }
 

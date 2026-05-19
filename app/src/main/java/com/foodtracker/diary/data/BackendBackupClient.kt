@@ -11,8 +11,7 @@ object BackendBackupClient {
     suspend fun backupAll(shareHost: String, logs: List<FoodLog>, settings: AppSettings): Int = withContext(Dispatchers.IO) {
         if (settings.apiToken.isBlank()) return@withContext 0
         val reporter = BackendDrinkReporter()
-        logs.forEach { reporter.submit(shareHost, it, settings) }
-        logs.size
+        logs.count { reporter.submit(shareHost, it, settings) }
     }
 
     suspend fun restore(

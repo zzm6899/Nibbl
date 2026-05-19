@@ -206,7 +206,7 @@ object ShareLinkTokenHelper {
     fun apiHostsFor(shareHost: String): List<String> {
         val webHost = normalizeShareHost(shareHost)
         val apiHost = apiHostFor(shareHost)
-        return listOf(apiHost, webHost).distinct()
+        return listOf(webHost, apiHost).distinct()
     }
 
     private fun createDayUrl(date: LocalDate, shareHost: String, token: String): String {

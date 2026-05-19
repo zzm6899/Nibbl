@@ -305,9 +305,9 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUris: List<Uri> = e
         return registered
     }
 
-    suspend fun submitLog(log: FoodLog) {
+    suspend fun submitLog(log: FoodLog): Boolean {
         val registered = ensureRegisteredSettings()
-        backendDrinkReporter.submit(registered.shareHost, log, registered)
+        return backendDrinkReporter.submit(registered.shareHost, log, registered)
     }
 
     fun persistLogInBackground(log: FoodLog) {
@@ -315,7 +315,11 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUris: List<Uri> = e
             runCatching { repository.save(log) }
                 .onFailure { error = "Could not save this log. Try again." }
                 .onSuccess {
-                    runCatching { submitLog(log) }
+                    runCatching {
+                        if (!submitLog(log)) {
+                            error = "Saved locally, but the photo did not upload. Check your server before sharing."
+                        }
+                    }
                         .onFailure { error = "Saved locally. Check your server before sharing." }
                 }
         }
@@ -330,12 +334,23 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUris: List<Uri> = e
 
     suspend fun createPublicDayShare(date: LocalDate): String? {
         val registered = ensureRegisteredSettings()
-        repository.logsForDate(repository.logs(), date).forEach { log ->
+        val dayLogs = repository.logsForDate(repository.logs(), date)
+        if (dayLogs.isEmpty()) {
+            error = "Add a food or drink photo before sharing this day."
+            Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+            return null
+        }
+        val uploaded = dayLogs.count { log ->
             backendDrinkReporter.submit(registered.shareHost, log, registered)
+        }
+        if (uploaded != dayLogs.size) {
+            error = "Could not upload ${dayLogs.size - uploaded} photo(s). Check your server, then create the link again."
+            Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+            return null
         }
         return BackendShareClient.createDayShare(settingsRepository, registered, date).also {
             if (it == null) {
-                error = "Could not create a public day link. Check your server connection and try again."
+                error = "Could not create a public day link. Make sure the photos finished syncing first."
                 Toast.makeText(context, error, Toast.LENGTH_LONG).show()
             } else {
                 error = null

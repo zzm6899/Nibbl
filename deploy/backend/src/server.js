@@ -126,7 +126,7 @@ app.post("/api/nibbl/ingest", requireDeviceAuth, upload.fields([
         owner_id, client_log_id, owner_name, owner_tag, timestamp_ms, log_date, title, category, caffeine_mg,
         calories, price_cents, rating, order_details, is_wishlist, reaction, favorite,
         cafe, location_name, latitude, longitude, friend_names, sticker, image_key, original_image_key, source
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,$23)
+      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb,$22,$23,$24,$25)
       on conflict (owner_id, client_log_id) where client_log_id <> ''
       do update set
         owner_name = excluded.owner_name,
@@ -268,6 +268,13 @@ app.post("/api/nibbl/profile", requireDeviceAuth, upload.fields([{ name: "avatar
 app.post("/api/nibbl/shares/day", requireDeviceAuth, async (req, res, next) => {
   try {
     const date = dateFromSlug(text(req.body.date, 32));
+    const { rows } = await pool.query(
+      "select count(*)::int as total from logs where owner_id = $1 and log_date = $2 and image_key is not null",
+      [req.device.owner_id, date],
+    );
+    if (!rows[0]?.total) {
+      return res.status(409).json({ error: "no_synced_photos" });
+    }
     const token = crypto.randomBytes(18).toString("base64url");
     await pool.query(
       `insert into day_shares (token, owner_id, owner_name, owner_tag, log_date, expires_at)
