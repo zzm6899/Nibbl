@@ -283,12 +283,7 @@ app.get("/api/admin/logs", requireAdmin, async (req, res, next) => {
   try {
     await ensureSchemaReady();
     const limit = Math.min(Number(req.query.limit || 80), 250);
-    const { rows } = await pool.query(
-      `select id, owner_name, owner_tag, timestamp_ms, log_date, title, category, caffeine_mg,
-        cafe, location_name, friend_names, sticker, image_key, original_image_key, created_at
-       from logs order by created_at desc limit $1`,
-      [limit],
-    );
+    const rows = await adminLogRows(limit);
     res.json(rows.map(rowToLog));
   } catch (error) {
     next(error);
@@ -388,7 +383,6 @@ async function bootstrapWithRetry() {
 }
 
 async function ensureSchemaReady() {
-  if (dbReady) return;
   await bootstrap();
   dbReady = true;
   lastBootstrapError = "";
@@ -586,16 +580,16 @@ async function readStats(includeRecent = false) {
   };
   if (includeRecent) {
     const [
-      { rows: recentDays },
-      { rows: topCategories },
-      { rows: topCafes },
-      { rows: topFriends },
-      { rows: sourceBreakdown },
-      { rows: recentShares },
-      { rows: recentWaitlist },
+      recentDays,
+      topCategories,
+      topCafes,
+      topFriends,
+      sourceBreakdown,
+      recentShares,
+      recentWaitlist,
     ] = await Promise.all([
-      pool.query("select log_date, count(*)::int as total from logs group by log_date order by log_date desc limit 14"),
-      pool.query(`
+      safeRows("admin recent days", "select log_date, count(*)::int as total from logs group by log_date order by log_date desc limit 14"),
+      safeRows("admin top categories", `
         select category as label, count(*)::int as total
         from logs
         where category <> ''
@@ -603,7 +597,7 @@ async function readStats(includeRecent = false) {
         order by total desc, category asc
         limit 8
       `),
-      pool.query(`
+      safeRows("admin top cafes", `
         select cafe as label, count(*)::int as total
         from logs
         where cafe <> ''
@@ -611,26 +605,26 @@ async function readStats(includeRecent = false) {
         order by total desc, cafe asc
         limit 8
       `),
-      pool.query(`
+      safeRows("admin top friends", `
         select coalesce(nullif(owner_name, ''), owner_tag, 'Unknown') as label, count(*)::int as total
         from logs
         group by label
         order by total desc, label asc
         limit 8
       `),
-      pool.query(`
+      safeRows("admin source breakdown", `
         select source as label, count(*)::int as total
         from logs
         group by source
         order by total desc, source asc
       `),
-      pool.query(`
+      safeRows("admin recent shares", `
         select token, owner_name, owner_tag, log_date, created_at, expires_at
         from day_shares
         order by created_at desc
         limit 8
       `),
-      pool.query(`
+      safeRows("admin recent waitlist", `
         select email as label, source, created_at
         from waitlist_signups
         order by created_at desc
@@ -658,6 +652,37 @@ async function readStats(includeRecent = false) {
     }));
   }
   return stats;
+}
+
+async function safeRows(label, sql, params = []) {
+  try {
+    const { rows } = await pool.query(sql, params);
+    return rows;
+  } catch (error) {
+    console.error(`${label} failed:`, error.message || "query_failed");
+    return [];
+  }
+}
+
+async function adminLogRows(limit) {
+  try {
+    const { rows } = await pool.query(
+      `select id, owner_name, owner_tag, timestamp_ms, log_date, title, category, caffeine_mg,
+        cafe, location_name, friend_names, sticker, image_key, original_image_key, created_at
+       from logs order by created_at desc limit $1`,
+      [limit],
+    );
+    return rows;
+  } catch (error) {
+    console.error("admin logs full query failed:", error.message || "query_failed");
+    const { rows } = await pool.query(
+      `select id, owner_name, owner_tag, timestamp_ms, log_date, title, category, caffeine_mg,
+        cafe, location_name, friend_names, '' as sticker, image_key, null as original_image_key, created_at
+       from logs order by created_at desc limit $1`,
+      [limit],
+    );
+    return rows;
+  }
 }
 
 async function dayPayload(date, ownerId = null) {
