@@ -272,6 +272,7 @@ app.post("/api/nibbl/shares/day", requireDeviceAuth, async (req, res, next) => {
 
 app.get("/api/admin/stats", requireAdmin, async (_req, res, next) => {
   try {
+    await ensureSchemaReady();
     res.json(await readStats(true));
   } catch (error) {
     next(error);
@@ -280,6 +281,7 @@ app.get("/api/admin/stats", requireAdmin, async (_req, res, next) => {
 
 app.get("/api/admin/logs", requireAdmin, async (req, res, next) => {
   try {
+    await ensureSchemaReady();
     const limit = Math.min(Number(req.query.limit || 80), 250);
     const { rows } = await pool.query(
       `select id, owner_name, owner_tag, timestamp_ms, log_date, title, category, caffeine_mg,
@@ -385,6 +387,13 @@ async function bootstrapWithRetry() {
   }
 }
 
+async function ensureSchemaReady() {
+  if (dbReady) return;
+  await bootstrap();
+  dbReady = true;
+  lastBootstrapError = "";
+}
+
 async function bootstrap() {
   await fs.mkdir(localObjectDir, { recursive: true });
   await pool.query(`
@@ -450,6 +459,7 @@ async function bootstrap() {
   `);
   await pool.query("alter table logs add column if not exists client_log_id text not null default ''");
   await pool.query("alter table logs add column if not exists sticker text not null default ''");
+  await pool.query("alter table logs add column if not exists original_image_key text");
   await pool.query("create unique index if not exists logs_owner_client_log_idx on logs(owner_id, client_log_id) where client_log_id <> ''");
   await pool.query("alter table devices add column if not exists avatar_key text");
   await pool.query("alter table day_shares add column if not exists expires_at timestamptz");
