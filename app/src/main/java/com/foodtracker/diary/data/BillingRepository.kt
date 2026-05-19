@@ -67,13 +67,8 @@ class BillingRepository(
             return@withContext BillingUiState(message = "Google Play Billing is not available on this device.")
         }
         products = queryProducts()
-        val message = if (products.isEmpty()) {
-            "Create the Nibbl products in Google Play Console, then publish an internal test build."
-        } else {
-            null
-        }
         restorePurchases()
-        BillingUiState(available = true, products = products, message = message)
+        BillingUiState(available = true, products = products)
     }
 
     suspend fun launchPurchase(activity: Activity, productId: String): String = withContext(Dispatchers.Main) {
