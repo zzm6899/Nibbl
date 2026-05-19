@@ -1114,6 +1114,7 @@ private fun SettingsScreen(
     var profileSaving by remember { mutableStateOf(false) }
     var profileError by remember { mutableStateOf<String?>(null) }
     var shareDayCreating by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     LazyColumn(contentPadding = PaddingValues(bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
@@ -1217,6 +1218,28 @@ private fun SettingsScreen(
                         Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(if (shareDayCreating) "Creating link" else "Create public day link")
+                    }
+                }
+            }
+        }
+        item {
+            Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Safety and support", fontWeight = FontWeight.Black)
+                    Text("Report child safety concerns, harmful content, or shared links that need review.", color = MaterialTheme.colorScheme.secondary)
+                    Button(
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_SENDTO).apply {
+                                data = Uri.parse("mailto:help@z2hs.au?subject=Nibbl%20child%20safety%20concern")
+                            }
+                            runCatching { context.startActivity(intent) }
+                                .onFailure { Toast.makeText(context, "Email help@z2hs.au to report a concern.", Toast.LENGTH_LONG).show() }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Report a safety concern")
                     }
                 }
             }
