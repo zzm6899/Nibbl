@@ -21,6 +21,8 @@ data class AppSettings(
     val plusUnlocked: Boolean = false,
     val proActive: Boolean = false,
     val lastPurchaseSyncMillis: Long = 0L,
+    val backgroundRemovalMonth: String = "",
+    val backgroundRemovalsThisMonth: Int = 0,
 ) {
     companion object {
         const val DEFAULT_DISPLAY_NAME = "Me"
@@ -55,6 +57,11 @@ class AppSettingsRepository(private val context: Context) {
     }
 
     suspend fun reset(): AppSettings = save(AppSettings())
+
+    suspend fun recordBackgroundRemoval(monthKey: String): AppSettings = update {
+        val currentCount = if (it.backgroundRemovalMonth == monthKey) it.backgroundRemovalsThisMonth else 0
+        it.copy(backgroundRemovalMonth = monthKey, backgroundRemovalsThisMonth = currentCount + 1)
+    }
 
     suspend fun saveProfileImage(bytes: ByteArray, suffix: String = ".jpg"): AppSettings = withContext(Dispatchers.IO) {
         require(bytes.isNotEmpty()) { "Profile image cannot be empty" }
@@ -124,6 +131,8 @@ private fun AppSettings.toJson(): JSONObject = JSONObject()
     .put("plusUnlocked", plusUnlocked)
     .put("proActive", proActive)
     .put("lastPurchaseSyncMillis", lastPurchaseSyncMillis)
+    .put("backgroundRemovalMonth", backgroundRemovalMonth)
+    .put("backgroundRemovalsThisMonth", backgroundRemovalsThisMonth)
 
 private fun JSONObject.toAppSettings(): AppSettings =
     AppSettings(
@@ -148,6 +157,8 @@ private fun JSONObject.toAppSettings(): AppSettings =
         plusUnlocked = optBoolean("plusUnlocked", false),
         proActive = optBoolean("proActive", false),
         lastPurchaseSyncMillis = optLong("lastPurchaseSyncMillis", 0L),
+        backgroundRemovalMonth = optNonBlankString("backgroundRemovalMonth") ?: "",
+        backgroundRemovalsThisMonth = optInt("backgroundRemovalsThisMonth", 0),
     )
 
 private fun JSONObject.optNonBlankString(name: String): String? =

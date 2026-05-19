@@ -168,6 +168,9 @@ class MainActivity : ComponentActivity() {
 private enum class CalendarMode { Month, Week, Day }
 private enum class AppSection { Diary, Crew, Settings }
 
+private const val FREE_BACKGROUND_REMOVALS_PER_MONTH = 60
+private const val FREE_CUSTOM_CATEGORY_LIMIT = 3
+
 private data class PendingLog(
     val originalPath: String,
     val cutoutPath: String,
@@ -232,11 +235,19 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
         processing = true
         error = null
         runCatching {
+            val monthKey = YearMonth.now().toString()
+            val monthCount = if (settings.backgroundRemovalMonth == monthKey) settings.backgroundRemovalsThisMonth else 0
+            if (!settings.plusUnlocked && !settings.proActive && monthCount >= FREE_BACKGROUND_REMOVALS_PER_MONTH) {
+                error = "Free includes $FREE_BACKGROUND_REMOVALS_PER_MONTH background removals each month. Unlock Nibbl Plus or Pro for more."
+                section = AppSection.Settings
+                return
+            }
             val original = context.contentResolver.openInputStream(uri)?.use { input ->
                 repository.saveBytes(input.readBytes(), ".jpg")
             } ?: error("Could not open selected image")
             processingPreviewPath = original
             val cutout = repository.saveBytes(remover.removeToPngBytes(uri), ".png")
+            settings = settingsRepository.recordBackgroundRemoval(monthKey)
             pending = PendingLog(original, cutout, locationHelper.currentCafeHint())
         }.onFailure {
             error = it.message ?: "Could not process the image"
@@ -547,7 +558,13 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                         onProfilePhoto = { profilePhotoLauncher.launch("image/*") },
                         onAddCategory = { label ->
                             scope.launch {
-                                categories = categoryStore.add(label)
+                                val customCount = categories.count { !it.builtIn }
+                                if (!settings.plusUnlocked && !settings.proActive && customCount >= FREE_CUSTOM_CATEGORY_LIMIT) {
+                                    error = "Free includes $FREE_CUSTOM_CATEGORY_LIMIT custom food + drink types. Unlock Nibbl Plus for unlimited types."
+                                    section = AppSection.Settings
+                                } else {
+                                    categories = categoryStore.add(label)
+                                }
                             }
                         },
                         onDeleteCategory = { category ->
@@ -1297,13 +1314,14 @@ private fun MonetizationCard(
                         when {
                             settings.proActive -> "Pro is active."
                             settings.plusUnlocked -> "Plus is unlocked."
-                            else -> "Unlock extra themes, unlimited logs, sync, and friend albums."
+                            else -> "Free includes $FREE_BACKGROUND_REMOVALS_PER_MONTH background removals/month and $FREE_CUSTOM_CATEGORY_LIMIT custom types."
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.secondary,
                     )
                 }
             }
+            MonetizationTierSummary(settings)
             if (billingState.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 BillingProductButton(
@@ -1339,6 +1357,32 @@ private fun MonetizationCard(
                 Text("Restore purchases")
             }
         }
+    }
+}
+
+@Composable
+private fun MonetizationTierSummary(settings: AppSettings) {
+    val monthKey = YearMonth.now().toString()
+    val used = if (settings.backgroundRemovalMonth == monthKey) settings.backgroundRemovalsThisMonth else 0
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Free", fontWeight = FontWeight.Black)
+        Text(
+            "$used/$FREE_BACKGROUND_REMOVALS_PER_MONTH background removals this month, basic diary, photo logs, profile links, public day sharing, and $FREE_CUSTOM_CATEGORY_LIMIT custom food + drink types.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.secondary,
+        )
+        Text("Plus: US$4.99 one-time", fontWeight = FontWeight.Black)
+        Text(
+            "Unlimited logs, unlimited custom categories, extra themes/icons/stickers, recap cards, and advanced filters.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.secondary,
+        )
+        Text("Pro: US$1.99/month or US$14.99/year", fontWeight = FontWeight.Black)
+        Text(
+            "Cloud sync/backup, cross-device restore, friend shared albums, recap exports, higher background-removal limits, and priority future features.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.secondary,
+        )
     }
 }
 

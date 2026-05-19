@@ -8,9 +8,9 @@ Create these in Google Play Console before testing checkout:
 
 | Product ID | Type | Suggested name | Suggested price |
 | --- | --- | --- | --- |
-| `nibbl_plus_lifetime` | One-time product | Nibbl Plus | US$4.99-US$9.99 one-time |
-| `nibbl_pro_monthly` | Subscription | Nibbl Pro Monthly | US$1.99-US$2.99/month |
-| `nibbl_pro_yearly` | Subscription | Nibbl Pro Yearly | US$14.99-US$24.99/year |
+| `nibbl_plus_lifetime` | One-time product | Nibbl Plus | US$4.99 one-time |
+| `nibbl_pro_monthly` | Subscription | Nibbl Pro Monthly | US$1.99/month |
+| `nibbl_pro_yearly` | Subscription | Nibbl Pro Yearly | US$14.99/year |
 
 ## Suggested benefits
 
@@ -19,19 +19,24 @@ Free:
 - Basic categories
 - Friend profile links
 - Public day sharing
+- 60 background removals/month
+- 3 custom food + drink categories
 
 Nibbl Plus:
 - Unlimited logs
 - Unlimited custom food + drink categories
 - Extra themes, icons, and stickers
 - Calendar recap cards
+- Advanced filters
 
 Nibbl Pro:
 - Cloud sync and backup
 - Friend albums
 - Background-removal credits
+- Higher background-removal limits
 - Monthly/yearly recap exports
 - Cross-device restore
+- Priority future features
 
 ## Play Console setup
 
@@ -50,5 +55,7 @@ Local entitlement flags are cached in `app_settings.json`:
 - `plusUnlocked`
 - `proActive`
 - `lastPurchaseSyncMillis`
+- `backgroundRemovalMonth`
+- `backgroundRemovalsThisMonth`
 
 For public release, verify purchase tokens server-side before trusting Pro-only backend features.
