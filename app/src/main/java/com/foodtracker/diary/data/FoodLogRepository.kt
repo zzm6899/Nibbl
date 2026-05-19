@@ -90,9 +90,13 @@ class FoodLogRepository(private val context: Context) {
         return FoodLogDaySummary(
             totalEntries = dayLogs.size,
             totalCaffeineMg = dayLogs.sumOf { it.caffeineMg ?: 0 },
+            totalCalories = dayLogs.sumOf { it.calories ?: 0 },
+            totalSpendCents = dayLogs.sumOf { it.priceCents ?: 0 },
             categoryCounts = dayLogs.groupingBy { it.category }.eachCount(),
             cafeCount = dayLogs.map { it.cafe.trim() }.filter { it.isNotEmpty() }.distinct().size,
             friendCount = dayLogs.flatMap { it.friendNames }.map { it.trim() }.filter { it.isNotEmpty() }.distinct().size,
+            favoriteCount = dayLogs.count { it.favorite },
+            wishlistCount = dayLogs.count { it.isWishlist },
         )
     }
 
@@ -163,6 +167,13 @@ private fun FoodLog.toJson() = JSONObject()
     .put("longitude", longitude ?: JSONObject.NULL)
     .put("friendNames", JSONArray(friendNames))
     .put("sticker", sticker)
+    .put("calories", calories ?: JSONObject.NULL)
+    .put("priceCents", priceCents ?: JSONObject.NULL)
+    .put("rating", rating ?: JSONObject.NULL)
+    .put("orderDetails", orderDetails)
+    .put("isWishlist", isWishlist)
+    .put("reaction", reaction)
+    .put("favorite", favorite)
 
 private fun String.toFoodLogArray(): JSONArray {
     val trimmed = trim()
@@ -204,6 +215,13 @@ private fun JSONObject.toFoodLogOrNull(): FoodLog? = runCatching {
         longitude = optDoubleOrNull("longitude"),
         friendNames = optStringArray("friendNames").ifEmpty { optStringArray("friends") },
         sticker = optNonBlankString("sticker") ?: "",
+        calories = optIntOrNull("calories") ?: optIntOrNull("calorieCount"),
+        priceCents = optIntOrNull("priceCents"),
+        rating = optIntOrNull("rating")?.coerceIn(1, 5),
+        orderDetails = optNonBlankString("orderDetails") ?: optNonBlankString("order") ?: "",
+        isWishlist = optBoolean("isWishlist", false),
+        reaction = optNonBlankString("reaction") ?: "",
+        favorite = optBoolean("favorite", false),
     )
 }.getOrNull()
 

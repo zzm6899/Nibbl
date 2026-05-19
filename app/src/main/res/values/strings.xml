@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">Nibbl</string>
+    <string name="widget_description">Quick-add food or drink to Nibbl</string>
+    <string name="shortcut_quick_add_short">Quick add</string>
+    <string name="shortcut_quick_add_long">Quick-add to Nibbl</string>
+    <string name="shortcut_disabled">Nibbl quick-add is unavailable</string>
 </resources>

@@ -124,8 +124,9 @@ app.post("/api/nibbl/ingest", requireDeviceAuth, upload.fields([
     const result = await pool.query(
       `insert into logs (
         owner_id, client_log_id, owner_name, owner_tag, timestamp_ms, log_date, title, category, caffeine_mg,
+        calories, price_cents, rating, order_details, is_wishlist, reaction, favorite,
         cafe, location_name, latitude, longitude, friend_names, sticker, image_key, original_image_key, source
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18)
+      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,$23)
       on conflict (owner_id, client_log_id) where client_log_id <> ''
       do update set
         owner_name = excluded.owner_name,
@@ -135,6 +136,13 @@ app.post("/api/nibbl/ingest", requireDeviceAuth, upload.fields([
         title = excluded.title,
         category = excluded.category,
         caffeine_mg = excluded.caffeine_mg,
+        calories = excluded.calories,
+        price_cents = excluded.price_cents,
+        rating = excluded.rating,
+        order_details = excluded.order_details,
+        is_wishlist = excluded.is_wishlist,
+        reaction = excluded.reaction,
+        favorite = excluded.favorite,
         cafe = excluded.cafe,
         location_name = excluded.location_name,
         latitude = excluded.latitude,
@@ -155,6 +163,13 @@ app.post("/api/nibbl/ingest", requireDeviceAuth, upload.fields([
         text(body.title, 80),
         text(body.category || "drink", 32),
         nullableInt(body.caffeineMg),
+        nullableInt(body.calories),
+        nullableInt(body.priceCents ?? body.price_cents),
+        nullableRating(body.rating),
+        text(body.orderDetails ?? body.order_details, 800),
+        booleanValue(body.isWishlist ?? body.is_wishlist),
+        text(body.reaction, 40),
+        booleanValue(body.favorite),
         text(body.cafe, 120),
         text(body.locationName, 160),
         nullableFloat(body.latitude),
@@ -270,10 +285,104 @@ app.post("/api/nibbl/shares/day", requireDeviceAuth, async (req, res, next) => {
   }
 });
 
+app.post("/api/nibbl/reports", async (req, res, next) => {
+  try {
+    await ensureSchemaReady();
+    const body = parseBody(req.body);
+    const shareToken = reportToken(body.shareToken || body.token);
+    const logId = uuidText(body.logId);
+    const ownerTag = friendTag(body.ownerTag);
+    if (!shareToken && !logId && !ownerTag) return res.status(400).json({ error: "report_target_required" });
+    const reason = text(body.reason, 80) || "unspecified";
+    const details = text(body.details, 1200);
+    const reporterContact = text(body.reporterContact, 254);
+    await pool.query(
+      `insert into content_reports (
+        share_token, log_id, owner_tag, reason, details, reporter_contact, reporter_ip, user_agent
+      ) values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [
+        shareToken,
+        logId,
+        ownerTag,
+        reason,
+        details,
+        reporterContact,
+        req.ip || "",
+        text(req.header("user-agent"), 300),
+      ],
+    );
+    res.status(201).json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/api/admin/stats", requireAdmin, async (_req, res, next) => {
   try {
     await ensureSchemaReady();
     res.json(await readStats(true));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/admin/moderation", requireAdmin, async (_req, res, next) => {
+  try {
+    await ensureSchemaReady();
+    const [reports, blocks] = await Promise.all([adminReportRows(), adminBlockRows()]);
+    res.json({ reports: reports.map(rowToReport), blocks: blocks.map(rowToBlock) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/admin/moderation/blocks", requireAdmin, async (req, res, next) => {
+  try {
+    await ensureSchemaReady();
+    const targetType = moderationTargetType(req.body.targetType);
+    const targetValue = moderationTargetValue(targetType, req.body.targetValue);
+    if (!targetType || !targetValue) return res.status(400).json({ error: "valid_target_required" });
+    const reason = text(req.body.reason, 300);
+    const { rows } = await pool.query(
+      `insert into moderation_blocks (target_type, target_value, reason, active)
+       values ($1,$2,$3,true)
+       on conflict (target_type, target_value) do update set
+        reason = excluded.reason,
+        active = true,
+        updated_at = now()
+       returning id, target_type, target_value, reason, active, created_at, updated_at`,
+      [targetType, targetValue, reason],
+    );
+    res.status(201).json(rowToBlock(rows[0]));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/admin/moderation/blocks/:id", requireAdmin, async (req, res, next) => {
+  try {
+    await ensureSchemaReady();
+    const id = uuidText(req.params.id);
+    if (!id) return res.status(400).json({ error: "valid_id_required" });
+    const active = req.body.active !== false;
+    const { rows } = await pool.query(
+      `update moderation_blocks
+       set active = $1, updated_at = now()
+       where id = $2
+       returning id, target_type, target_value, reason, active, created_at, updated_at`,
+      [active, id],
+    );
+    if (!rows.length) return res.status(404).json({ error: "block_not_found" });
+    res.json(rowToBlock(rows[0]));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/admin/shares/cleanup-expired", requireAdmin, async (_req, res, next) => {
+  try {
+    await ensureSchemaReady();
+    res.json(await cleanupExpiredShares());
   } catch (error) {
     next(error);
   }
@@ -294,6 +403,7 @@ app.get("/api/nibbl/logs", requireDeviceAuth, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `select id, owner_name, owner_tag, timestamp_ms, log_date, title, category, caffeine_mg,
+        calories, price_cents, rating, order_details, is_wishlist, reaction, favorite,
         cafe, location_name, friend_names, sticker, image_key, original_image_key, created_at
        from logs where owner_id = $1 order by timestamp_ms asc`,
       [req.device.owner_id],
@@ -403,6 +513,13 @@ async function bootstrap() {
       title text not null default '',
       category text not null default 'drink',
       caffeine_mg integer,
+      calories integer,
+      price_cents integer,
+      rating integer,
+      order_details text not null default '',
+      is_wishlist boolean not null default false,
+      reaction text not null default '',
+      favorite boolean not null default false,
       cafe text not null default '',
       location_name text not null default '',
       latitude double precision,
@@ -449,15 +566,51 @@ async function bootstrap() {
       updated_at timestamptz not null default now()
     );
     create index if not exists waitlist_signups_created_at_idx on waitlist_signups(created_at desc);
+    create table if not exists content_reports (
+      id uuid primary key default gen_random_uuid(),
+      share_token text not null default '',
+      log_id uuid,
+      owner_tag text not null default '',
+      reason text not null default '',
+      details text not null default '',
+      reporter_contact text not null default '',
+      reporter_ip text not null default '',
+      user_agent text not null default '',
+      status text not null default 'open',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create index if not exists content_reports_status_idx on content_reports(status, created_at desc);
+    create index if not exists content_reports_share_token_idx on content_reports(share_token) where share_token <> '';
+    create table if not exists moderation_blocks (
+      id uuid primary key default gen_random_uuid(),
+      target_type text not null,
+      target_value text not null,
+      reason text not null default '',
+      active boolean not null default true,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      unique (target_type, target_value)
+    );
+    create index if not exists moderation_blocks_active_idx on moderation_blocks(active, target_type, target_value);
   `);
   await pool.query("alter table logs add column if not exists client_log_id text not null default ''");
   await pool.query("alter table logs add column if not exists sticker text not null default ''");
   await pool.query("alter table logs add column if not exists original_image_key text");
+  await pool.query("alter table logs add column if not exists calories integer");
+  await pool.query("alter table logs add column if not exists price_cents integer");
+  await pool.query("alter table logs add column if not exists rating integer");
+  await pool.query("alter table logs add column if not exists order_details text not null default ''");
+  await pool.query("alter table logs add column if not exists is_wishlist boolean not null default false");
+  await pool.query("alter table logs add column if not exists reaction text not null default ''");
+  await pool.query("alter table logs add column if not exists favorite boolean not null default false");
   await pool.query("create unique index if not exists logs_owner_client_log_idx on logs(owner_id, client_log_id) where client_log_id <> ''");
   await pool.query("alter table devices add column if not exists avatar_key text");
   await pool.query("alter table day_shares add column if not exists expires_at timestamptz");
   await pool.query("update day_shares set expires_at = created_at + ($1::text || ' days')::interval where expires_at is null", [shareExpiryDays]);
   await pool.query("create index if not exists day_shares_expires_at_idx on day_shares(expires_at)");
+  await pool.query("alter table content_reports add column if not exists status text not null default 'open'");
+  await pool.query("alter table moderation_blocks add column if not exists active boolean not null default true");
   await ensureObjectStorage();
 }
 
@@ -509,6 +662,8 @@ async function readStats(includeRecent = false) {
     { rows: avatarDevices },
     { rows: recentUploads },
     { rows: waitlist },
+    { rows: reportCounts },
+    { rows: blockCounts },
     storage,
   ] = await Promise.all([
     pool.query(`
@@ -519,7 +674,12 @@ async function readStats(includeRecent = false) {
         count(distinct owner_id)::int as active_loggers,
         coalesce(sum(case when image_key is not null then 1 else 0 end), 0)::int as image_entries,
         coalesce(sum(case when original_image_key is not null then 1 else 0 end), 0)::int as original_entries,
-        coalesce(sum(coalesce(caffeine_mg, 0)), 0)::int as caffeine_total
+        coalesce(sum(coalesce(caffeine_mg, 0)), 0)::int as caffeine_total,
+        coalesce(sum(coalesce(calories, 0)), 0)::int as calories_total,
+        coalesce(sum(coalesce(price_cents, 0)), 0)::int as price_cents_total,
+        round(avg(rating) filter (where rating is not null), 1) as average_rating,
+        count(*) filter (where is_wishlist)::int as wishlist_entries,
+        count(*) filter (where favorite)::int as favorite_entries
       from logs
     `),
     pool.query("select count(distinct category)::int as categories from logs where category <> ''"),
@@ -548,6 +708,19 @@ async function readStats(includeRecent = false) {
     pool.query("select count(*)::int as avatar_devices from devices where avatar_key is not null"),
     pool.query("select max(created_at) as last_upload_at from logs"),
     pool.query("select count(*)::int as waitlist_signups from waitlist_signups"),
+    pool.query(`
+      select
+        count(*)::int as reports,
+        count(*) filter (where status = 'open')::int as open_reports,
+        count(*) filter (where created_at >= now() - interval '7 days')::int as reports_week
+      from content_reports
+    `),
+    pool.query(`
+      select
+        count(*)::int as moderation_blocks,
+        count(*) filter (where active)::int as active_moderation_blocks
+      from moderation_blocks
+    `),
     storageStats(),
   ]);
   const countRow = counts[0] || {};
@@ -559,6 +732,11 @@ async function readStats(includeRecent = false) {
     imageEntries: countRow.image_entries || imageLogs[0]?.image_logs || 0,
     originalEntries: countRow.original_entries || 0,
     caffeineTotal: countRow.caffeine_total || 0,
+    caloriesTotal: countRow.calories_total || 0,
+    priceCentsTotal: countRow.price_cents_total || 0,
+    averageRating: countRow.average_rating === null ? null : Number(countRow.average_rating),
+    wishlistEntries: countRow.wishlist_entries || 0,
+    favoriteEntries: countRow.favorite_entries || 0,
     cafes: cafes[0]?.cafes || 0,
     friends: friends[0]?.friends || 0,
     categories: categories[0]?.categories || 0,
@@ -569,6 +747,11 @@ async function readStats(includeRecent = false) {
     shareVisits: visits[0]?.share_visits || 0,
     avatarDevices: avatarDevices[0]?.avatar_devices || 0,
     waitlistSignups: waitlist[0]?.waitlist_signups || 0,
+    reports: reportCounts[0]?.reports || 0,
+    openReports: reportCounts[0]?.open_reports || 0,
+    reportsWeek: reportCounts[0]?.reports_week || 0,
+    moderationBlocks: blockCounts[0]?.moderation_blocks || 0,
+    activeModerationBlocks: blockCounts[0]?.active_moderation_blocks || 0,
     lastUploadAt: recentUploads[0]?.last_upload_at || null,
     storage,
     health: {
@@ -587,6 +770,8 @@ async function readStats(includeRecent = false) {
       sourceBreakdown,
       recentShares,
       recentWaitlist,
+      recentReports,
+      activeBlocks,
     ] = await Promise.all([
       safeRows("admin recent days", "select log_date, count(*)::int as total from logs group by log_date order by log_date desc limit 14"),
       safeRows("admin top categories", `
@@ -630,6 +815,19 @@ async function readStats(includeRecent = false) {
         order by created_at desc
         limit 8
       `),
+      safeRows("admin recent reports", `
+        select id, share_token, log_id, owner_tag, reason, details, reporter_contact, status, created_at
+        from content_reports
+        order by created_at desc
+        limit 8
+      `),
+      safeRows("admin active blocks", `
+        select id, target_type, target_value, reason, active, created_at, updated_at
+        from moderation_blocks
+        where active
+        order by updated_at desc
+        limit 8
+      `),
     ]);
     stats.recentDays = recentDays.map((row) => ({ date: normalizeDateValue(row.log_date), total: row.total }));
     stats.topCategories = topCategories;
@@ -650,6 +848,8 @@ async function readStats(includeRecent = false) {
       source: row.source,
       createdAt: row.created_at,
     }));
+    stats.recentReports = recentReports.map(rowToReport);
+    stats.activeBlocks = activeBlocks.map(rowToBlock);
   }
   return stats;
 }
@@ -664,10 +864,53 @@ async function safeRows(label, sql, params = []) {
   }
 }
 
+async function adminReportRows() {
+  const { rows } = await pool.query(
+    `select id, share_token, log_id, owner_tag, reason, details, reporter_contact, status, created_at
+     from content_reports
+     order by created_at desc
+     limit 100`,
+  );
+  return rows;
+}
+
+async function adminBlockRows() {
+  const { rows } = await pool.query(
+    `select id, target_type, target_value, reason, active, created_at, updated_at
+     from moderation_blocks
+     order by active desc, updated_at desc
+     limit 100`,
+  );
+  return rows;
+}
+
+async function cleanupExpiredShares() {
+  const { rows } = await pool.query(
+    `with deleted as (
+       delete from day_shares
+       where expires_at is not null and expires_at <= now()
+       returning token
+     ),
+     deleted_visits as (
+       delete from share_visits
+       where slug in (select token from deleted)
+       returning id
+     )
+     select
+      (select count(*)::int from deleted) as deleted_shares,
+      (select count(*)::int from deleted_visits) as deleted_visits`,
+  );
+  return {
+    deletedShares: rows[0]?.deleted_shares || 0,
+    deletedVisits: rows[0]?.deleted_visits || 0,
+  };
+}
+
 async function adminLogRows(limit) {
   try {
     const { rows } = await pool.query(
       `select id, owner_name, owner_tag, timestamp_ms, log_date, title, category, caffeine_mg,
+        calories, price_cents, rating, order_details, is_wishlist, reaction, favorite,
         cafe, location_name, friend_names, sticker, image_key, original_image_key, created_at
        from logs order by created_at desc limit $1`,
       [limit],
@@ -677,6 +920,8 @@ async function adminLogRows(limit) {
     console.error("admin logs full query failed:", error.message || "query_failed");
     const { rows } = await pool.query(
       `select id, owner_name, owner_tag, timestamp_ms, log_date, title, category, caffeine_mg,
+        null as calories, null as price_cents, null as rating, '' as order_details,
+        false as is_wishlist, '' as reaction, false as favorite,
         cafe, location_name, friend_names, '' as sticker, image_key, null as original_image_key, created_at
        from logs order by created_at desc limit $1`,
       [limit],
@@ -691,6 +936,7 @@ async function dayPayload(date, ownerId = null) {
   const params = ownerId ? [normalizedDate, ownerId] : [normalizedDate];
   const { rows } = await pool.query(
     `select id, owner_name, owner_tag, timestamp_ms, log_date, title, category, caffeine_mg,
+      calories, price_cents, rating, order_details, is_wishlist, reaction, favorite,
       cafe, location_name, friend_names, sticker, image_key, original_image_key, created_at
      from logs where log_date = $1 ${ownerClause} order by timestamp_ms asc`,
     params,
@@ -710,6 +956,11 @@ async function shareByToken(token) {
     [cleanToken],
   );
   if (!rows.length) {
+    const error = new Error("Share not found");
+    error.status = 404;
+    throw error;
+  }
+  if (await isModerationBlocked("share_token", cleanToken) || await isModerationBlocked("owner_id", rows[0].owner_id) || await isModerationBlocked("owner_tag", rows[0].owner_tag)) {
     const error = new Error("Share not found");
     error.status = 404;
     throw error;
@@ -739,6 +990,16 @@ async function assertFriendTagAvailable(ownerTag, ownerId) {
   }
 }
 
+async function isModerationBlocked(targetType, targetValue) {
+  const cleanValue = String(targetValue || "").trim();
+  if (!cleanValue) return false;
+  const { rows } = await pool.query(
+    "select 1 from moderation_blocks where active and target_type = $1 and target_value = $2 limit 1",
+    [targetType, cleanValue],
+  );
+  return rows.length > 0;
+}
+
 function rowToLog(row) {
   return {
     id: row.id,
@@ -749,6 +1010,13 @@ function rowToLog(row) {
     title: row.title,
     category: row.category,
     caffeineMg: row.caffeine_mg,
+    calories: row.calories,
+    priceCents: row.price_cents,
+    rating: row.rating,
+    orderDetails: row.order_details || "",
+    isWishlist: Boolean(row.is_wishlist),
+    reaction: row.reaction || "",
+    favorite: Boolean(row.favorite),
     cafe: row.cafe,
     locationName: row.location_name,
     friendNames: Array.isArray(row.friend_names) ? row.friend_names : [],
@@ -756,6 +1024,32 @@ function rowToLog(row) {
     imageUrl: row.image_key ? objectUrl(row.image_key) : null,
     originalImageUrl: row.original_image_key ? objectUrl(row.original_image_key) : null,
     createdAt: row.created_at,
+  };
+}
+
+function rowToReport(row) {
+  return {
+    id: row.id,
+    shareToken: row.share_token || "",
+    logId: row.log_id || "",
+    ownerTag: row.owner_tag || "",
+    reason: row.reason || "",
+    details: row.details || "",
+    reporterContact: row.reporter_contact || "",
+    status: row.status || "open",
+    createdAt: row.created_at,
+  };
+}
+
+function rowToBlock(row) {
+  return {
+    id: row.id,
+    targetType: row.target_type,
+    targetValue: row.target_value,
+    reason: row.reason || "",
+    active: Boolean(row.active),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -896,6 +1190,9 @@ async function requireDeviceAuth(req, res, next) {
       [tokenHashFor(token)],
     );
     if (!rows.length) return res.status(403).json({ error: "invalid_device_token" });
+    if (await isModerationBlocked("owner_id", rows[0].owner_id) || await isModerationBlocked("owner_tag", rows[0].owner_tag)) {
+      return res.status(403).json({ error: "device_blocked" });
+    }
     req.device = rows[0];
     next();
   } catch (error) {
@@ -979,13 +1276,47 @@ function nullableInt(value) {
   return Number.isFinite(number) ? Math.round(number) : null;
 }
 
+function nullableRating(value) {
+  const rating = nullableInt(value);
+  return rating === null ? null : Math.max(1, Math.min(rating, 5));
+}
+
 function nullableFloat(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
 
+function booleanValue(value) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return ["1", "true", "yes", "y", "on"].includes(normalized);
+}
+
 function text(value, max) {
   return String(value ?? "").trim().slice(0, max);
+}
+
+function uuidText(value) {
+  const candidate = text(value, 80);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidate) ? candidate : null;
+}
+
+function reportToken(value) {
+  const candidate = text(value, 80);
+  return /^[a-zA-Z0-9_-]{16,80}$/.test(candidate) ? candidate : "";
+}
+
+function moderationTargetType(value) {
+  const targetType = text(value, 40);
+  return ["owner_id", "owner_tag", "share_token", "log_id"].includes(targetType) ? targetType : "";
+}
+
+function moderationTargetValue(targetType, value) {
+  if (targetType === "owner_tag") return friendTag(value);
+  if (targetType === "share_token") return reportToken(value);
+  if (targetType === "log_id") return uuidText(value) || "";
+  return text(value, 120);
 }
 
 function emailAddress(value) {

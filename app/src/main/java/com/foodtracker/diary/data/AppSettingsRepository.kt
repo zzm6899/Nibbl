@@ -25,6 +25,7 @@ data class AppSettings(
     val backgroundRemovalsThisMonth: Int = 0,
     val themeId: String = "pastel",
     val stickerPack: String = "sweet",
+    val caffeineBudgetMg: Int = 400,
 ) {
     companion object {
         const val DEFAULT_DISPLAY_NAME = "Me"
@@ -117,6 +118,7 @@ private fun AppSettings.normalized(): AppSettings =
         profileImagePath = profileImagePath?.trim()?.takeIf { it.isNotBlank() },
         themeId = themeId.trim().lowercase().takeIf { it in setOf("pastel", "berry", "mint", "sunny") } ?: "pastel",
         stickerPack = stickerPack.trim().lowercase().takeIf { it in setOf("sweet", "cafe", "sparkle", "fresh") } ?: "sweet",
+        caffeineBudgetMg = caffeineBudgetMg.coerceIn(0, 1000),
         shareHost = ShareLinkTokenHelper.normalizeShareHost(shareHost)
             .replace("https://api.nibbl.z2hs.au", ShareLinkTokenHelper.DEFAULT_SHARE_HOST)
             .replace("https://sipday.local", ShareLinkTokenHelper.DEFAULT_SHARE_HOST)
@@ -139,6 +141,7 @@ private fun AppSettings.toJson(): JSONObject = JSONObject()
     .put("backgroundRemovalsThisMonth", backgroundRemovalsThisMonth)
     .put("themeId", themeId)
     .put("stickerPack", stickerPack)
+    .put("caffeineBudgetMg", caffeineBudgetMg)
 
 private fun JSONObject.toAppSettings(): AppSettings =
     AppSettings(
@@ -167,6 +170,7 @@ private fun JSONObject.toAppSettings(): AppSettings =
         backgroundRemovalsThisMonth = optInt("backgroundRemovalsThisMonth", 0),
         themeId = optNonBlankString("themeId") ?: "pastel",
         stickerPack = optNonBlankString("stickerPack") ?: "sweet",
+        caffeineBudgetMg = optInt("caffeineBudgetMg", 400),
     )
 
 private fun JSONObject.optNonBlankString(name: String): String? =

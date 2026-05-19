@@ -73,6 +73,13 @@ object BackendBackupClient {
                 List(array.length()) { index -> array.optString(index).trim() }.filter { it.isNotBlank() }
             }.orEmpty(),
             sticker = optString("sticker"),
+            calories = if (isNull("calories")) null else optInt("calories"),
+            priceCents = if (isNull("priceCents")) null else optInt("priceCents"),
+            rating = if (isNull("rating")) null else optInt("rating").coerceIn(1, 5),
+            orderDetails = optString("orderDetails"),
+            isWishlist = optBoolean("isWishlist", false),
+            reaction = optString("reaction"),
+            favorite = optBoolean("favorite", false),
         )
 
     private fun parseCategory(raw: String): DrinkCategory =

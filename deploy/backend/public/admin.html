@@ -17,6 +17,7 @@
         </div>
         <div class="admin-actions">
           <button id="refresh">Refresh</button>
+          <button id="cleanupExpired" class="secondary">Clean expired shares</button>
           <span id="refreshedAt" class="admin-refresh-time">Not loaded yet</span>
         </div>
       </section>
@@ -28,6 +29,7 @@
         <div><span>Storage used</span><strong id="storageUsed">-</strong></div>
         <div><span>Object files</span><strong id="storageFiles">-</strong></div>
         <div><span>Last upload</span><strong id="lastUpload">-</strong></div>
+        <div><span>Storage path</span><strong id="storagePath">-</strong></div>
       </section>
 
       <section class="admin-grid" aria-label="Backend stats">
@@ -47,6 +49,13 @@
         <div class="stat"><span>Waitlist</span><strong id="waitlistSignups">-</strong></div>
         <div class="stat"><span>Caffeine mg</span><strong id="caffeineTotal">-</strong></div>
         <div class="stat"><span>Shares week</span><strong id="sharesWeek">-</strong></div>
+        <div class="stat"><span>Calories</span><strong id="caloriesTotal">-</strong></div>
+        <div class="stat"><span>Spend</span><strong id="priceTotal">-</strong></div>
+        <div class="stat"><span>Avg rating</span><strong id="averageRating">-</strong></div>
+        <div class="stat"><span>Wishlist</span><strong id="wishlistEntries">-</strong></div>
+        <div class="stat"><span>Favorites</span><strong id="favoriteEntries">-</strong></div>
+        <div class="stat"><span>Open reports</span><strong id="openReports">-</strong></div>
+        <div class="stat"><span>Active blocks</span><strong id="activeModerationBlocks">-</strong></div>
       </section>
 
       <section class="admin-lists" aria-label="Admin breakdowns">
@@ -57,13 +66,15 @@
         <div class="panel"><strong>Sources</strong><div id="sourceBreakdown" class="rank-list"></div></div>
         <div class="panel"><strong>Recent share links</strong><div id="recentShares" class="rank-list share-links"></div></div>
         <div class="panel"><strong>Waitlist</strong><div id="recentWaitlist" class="rank-list"></div></div>
+        <div class="panel"><strong>Recent reports</strong><div id="recentReports" class="rank-list"></div></div>
+        <div class="panel"><strong>Active blocks</strong><div id="activeBlocks" class="rank-list"></div></div>
       </section>
 
       <section class="panel admin-table-panel">
         <div class="panel-title"><strong>Recent uploads</strong><span>Latest synced app entries</span></div>
         <table>
           <thead>
-            <tr><th>Photo</th><th>When</th><th>Owner</th><th>Food + drink</th><th>Cafe</th><th>Type</th></tr>
+            <tr><th>Photo</th><th>When</th><th>Owner</th><th>Food + drink</th><th>Cafe</th><th>Type</th><th>Metadata</th></tr>
           </thead>
           <tbody id="logs"></tbody>
         </table>
@@ -95,11 +106,19 @@
         setText("friends", stats.friends ?? 0);
         setText("categories", stats.categories ?? 0);
         setText("caffeineTotal", stats.caffeineTotal ?? 0);
+        setText("caloriesTotal", stats.caloriesTotal ?? 0);
+        setText("priceTotal", formatMoney(stats.priceCentsTotal ?? 0));
+        setText("averageRating", stats.averageRating ?? "-");
+        setText("wishlistEntries", stats.wishlistEntries ?? 0);
+        setText("favoriteEntries", stats.favoriteEntries ?? 0);
+        setText("openReports", stats.openReports ?? 0);
+        setText("activeModerationBlocks", stats.activeModerationBlocks ?? 0);
         setText("database", stats.health?.database || "-");
         setText("objects", stats.health?.objectStorage || "-");
         setText("objectMode", stats.health?.objectMode || "-");
         setText("storageUsed", formatBytes(stats.storage?.bytes || 0, stats.storage?.capacityBytes || 0, stats.storage?.percentUsed));
         setText("storageFiles", stats.storage?.files ?? 0);
+        setText("storagePath", stats.storage?.path || "-");
         setText("lastUpload", stats.lastUploadAt ? formatSydneyDateTime(stats.lastUploadAt) : "None yet");
         renderRankList("recentDays", (stats.recentDays || []).map((item) => ({ label: item.date, total: item.total })));
         renderRankList("topCategories", stats.topCategories || []);
@@ -108,6 +127,8 @@
         renderRankList("sourceBreakdown", stats.sourceBreakdown || []);
         renderWaitlist(stats.recentWaitlist || []);
         renderShares(stats.recentShares || []);
+        renderReports(stats.recentReports || []);
+        renderBlocks(stats.activeBlocks || []);
         document.getElementById("logs").innerHTML = (Array.isArray(logs) ? logs : []).map((log) => `
           <tr>
             <td>${log.imageUrl ? `<a href="${escapeHtml(log.imageUrl)}"><img class="admin-thumb" src="${escapeHtml(log.imageUrl)}" alt=""></a>` : `<span class="admin-no-image">No image</span>`}</td>
@@ -116,6 +137,7 @@
             <td>${escapeHtml(log.title || "Food + drink")}</td>
             <td>${escapeHtml(log.cafe || log.locationName || "")}</td>
             <td>${escapeHtml(log.category || "")}</td>
+            <td>${escapeHtml(logMetadata(log))}</td>
           </tr>
         `).join("");
         setText("refreshedAt", `Updated ${formatSydneyTime(new Date().toISOString())}`);
@@ -125,8 +147,8 @@
         }
       }
 
-      async function fetchJson(url) {
-        const response = await fetch(url);
+      async function fetchJson(url, options = {}) {
+        const response = await fetch(url, options);
         if (!response.ok) {
           if (response.status === 401) throw new Error("Admin password required. Refresh and sign in when your browser prompts.");
           if (response.status === 503) throw new Error("Admin password is not set on the server.");
@@ -158,6 +180,35 @@
         document.getElementById("recentWaitlist").innerHTML = rows.length ? rows.map((row) => `
           <div class="rank-row"><span>${escapeHtml(row.label || "Unknown")}</span><strong>${escapeHtml(formatSydneyTime(row.createdAt))}</strong></div>
         `).join("") : `<div class="empty-row">No signups yet</div>`;
+      }
+
+      function renderReports(rows) {
+        document.getElementById("recentReports").innerHTML = rows.length ? rows.map((row) => `
+          <div class="rank-row"><span>${escapeHtml(reportLabel(row))}</span><strong>${escapeHtml(row.status || "open")}</strong></div>
+        `).join("") : `<div class="empty-row">No reports yet</div>`;
+      }
+
+      function renderBlocks(rows) {
+        document.getElementById("activeBlocks").innerHTML = rows.length ? rows.map((row) => `
+          <div class="rank-row"><span>${escapeHtml(`${row.targetType}:${row.targetValue}`)}</span><strong>${escapeHtml(row.reason || "Blocked")}</strong></div>
+        `).join("") : `<div class="empty-row">No active blocks</div>`;
+      }
+
+      function reportLabel(row) {
+        const target = row.ownerTag ? `@${row.ownerTag}` : row.shareToken ? `share ${row.shareToken}` : row.logId ? `log ${row.logId}` : "Unknown";
+        return `${target} · ${row.reason || "reported"} · ${formatSydneyTime(row.createdAt)}`;
+      }
+
+      function logMetadata(log) {
+        const parts = [];
+        if (log.calories != null) parts.push(`${log.calories} cal`);
+        if (log.priceCents != null) parts.push(formatMoney(log.priceCents));
+        if (log.rating != null) parts.push(`${log.rating}/5`);
+        if (log.isWishlist) parts.push("wishlist");
+        if (log.favorite) parts.push("favorite");
+        if (log.reaction) parts.push(log.reaction);
+        if (log.orderDetails) parts.push(log.orderDetails);
+        return parts.join(" · ");
       }
 
       function publicOwner(row) {
@@ -203,6 +254,10 @@
         return `${label} · ${percentUsed ?? 0}%`;
       }
 
+      function formatMoney(cents) {
+        return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(Number(cents || 0) / 100);
+      }
+
       function escapeHtml(value) {
         return String(value ?? "").replace(/[&<>"']/g, (char) => ({
           "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -211,10 +266,25 @@
 
       const refresh = document.getElementById("refresh");
       refresh.addEventListener("click", () => load().catch(showError));
+      document.getElementById("cleanupExpired").addEventListener("click", () => cleanupExpiredShares().catch(showError));
       load().catch(showError);
 
+      async function cleanupExpiredShares() {
+        const button = document.getElementById("cleanupExpired");
+        button.disabled = true;
+        button.textContent = "Cleaning";
+        try {
+          const result = await fetchJson("/api/admin/shares/cleanup-expired", { method: "POST" });
+          setText("refreshedAt", `Deleted ${result.deletedShares || 0} expired shares`);
+          await load();
+        } finally {
+          button.disabled = false;
+          button.textContent = "Clean expired shares";
+        }
+      }
+
       function showError(error) {
-        document.getElementById("logs").innerHTML = `<tr><td colspan="6">${escapeHtml(error.message)}</td></tr>`;
+        document.getElementById("logs").innerHTML = `<tr><td colspan="7">${escapeHtml(error.message)}</td></tr>`;
         setText("refreshedAt", "Could not load");
       }
     </script>

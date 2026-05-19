@@ -5,6 +5,10 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
@@ -103,6 +107,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -133,11 +138,17 @@ import com.foodtracker.diary.data.LocationHelper
 import com.foodtracker.diary.data.ShareLinkTokenHelper
 import com.foodtracker.diary.data.toFriendInviteCode
 import com.foodtracker.diary.ui.theme.FoodDiaryTheme
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.MultiFormatWriter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
+import androidx.core.content.FileProvider
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -148,15 +159,15 @@ import java.util.UUID
 
 class MainActivity : ComponentActivity() {
     private var deepLinkUrl by mutableStateOf<String?>(null)
-    private var sharedImageUri by mutableStateOf<Uri?>(null)
+    private var sharedImageUris by mutableStateOf<List<Uri>>(emptyList())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         deepLinkUrl = intent?.dataString
-        sharedImageUri = intent?.nibblSharedImageUri()
+        sharedImageUris = intent?.nibblSharedImageUris().orEmpty()
         setContent {
             FoodDiaryTheme {
-                DiaryApp(deepLinkUrl, sharedImageUri)
+                DiaryApp(deepLinkUrl, sharedImageUris)
             }
         }
     }
@@ -164,7 +175,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         deepLinkUrl = intent.dataString
-        sharedImageUri = intent.nibblSharedImageUri()
+        sharedImageUris = intent.nibblSharedImageUris()
     }
 }
 
@@ -182,7 +193,7 @@ private data class PendingLog(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
+private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUris: List<Uri> = emptyList()) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { FoodLogRepository(context) }
@@ -209,6 +220,8 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
     var selectedCategory by remember { mutableStateOf<DrinkCategory?>(null) }
     var cafeFilter by remember { mutableStateOf("") }
     var caffeinatedOnly by remember { mutableStateOf(false) }
+    var wishlistOnly by remember { mutableStateOf(false) }
+    var favoritesOnly by remember { mutableStateOf(false) }
     var processing by remember { mutableStateOf(false) }
     var processingPreviewPath by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -219,12 +232,15 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
     var pendingAvatarPerson by remember { mutableStateOf<CafeCrewPerson?>(null) }
     var editFriend by remember { mutableStateOf<CafeCrewPerson?>(null) }
     var handledDeepLinkUrl by remember { mutableStateOf<String?>(null) }
-    var handledSharedImageUri by remember { mutableStateOf<String?>(null) }
+    var handledSharedImageKey by remember { mutableStateOf<String?>(null) }
+    var sharedImageQueue by remember { mutableStateOf(emptyList<Uri>()) }
     val filteredLogs = logs.filter { log ->
         (selectedFriend == null || log.friendNames.contains(selectedFriend)) &&
             (selectedCategory == null || log.category == selectedCategory) &&
             (cafeFilter.isBlank() || log.cafe.contains(cafeFilter, ignoreCase = true) || log.locationName.contains(cafeFilter, ignoreCase = true)) &&
-            (!caffeinatedOnly || (log.caffeineMg ?: 0) > 0)
+            (!caffeinatedOnly || (log.caffeineMg ?: 0) > 0) &&
+            (!wishlistOnly || log.isWishlist) &&
+            (!favoritesOnly || log.favorite)
     }
 
     fun showLogImmediately(log: FoodLog) {
@@ -415,6 +431,13 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
     LaunchedEffect(deepLinkUrl) {
         val url = deepLinkUrl?.takeIf { it.isNotBlank() && it != handledDeepLinkUrl } ?: return@LaunchedEffect
         handledDeepLinkUrl = url
+        if (url.startsWith("nibbl://quick-add", ignoreCase = true)) {
+            selectedDate = LocalDate.now()
+            mode = CalendarMode.Day
+            section = AppSection.Diary
+            Toast.makeText(context, "Use camera or gallery to quick-add to Nibbl.", Toast.LENGTH_SHORT).show()
+            return@LaunchedEffect
+        }
         ShareLinkTokenHelper.parseCrewInviteUrl(url)?.let { invite ->
             addFriendFromInviteOrTag(url)
             section = AppSection.Crew
@@ -426,15 +449,21 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
         }
     }
 
-    LaunchedEffect(sharedImageUri) {
-        val uri = sharedImageUri ?: return@LaunchedEffect
-        val uriKey = uri.toString()
-        if (uriKey == handledSharedImageUri) return@LaunchedEffect
-        handledSharedImageUri = uriKey
+    LaunchedEffect(sharedImageUris) {
+        val key = sharedImageUris.joinToString("|") { it.toString() }
+        if (key.isBlank() || key == handledSharedImageKey) return@LaunchedEffect
+        handledSharedImageKey = key
+        sharedImageQueue = sharedImageUris
+    }
+
+    LaunchedEffect(sharedImageQueue, pending, processing) {
+        val next = sharedImageQueue.firstOrNull() ?: return@LaunchedEffect
+        if (pending != null || processing) return@LaunchedEffect
+        sharedImageQueue = sharedImageQueue.drop(1)
         selectedDate = LocalDate.now()
         mode = CalendarMode.Day
         section = AppSection.Diary
-        importImage(uri)
+        importImage(next)
     }
 
     FoodDiaryTheme(settings.themeId) {
@@ -498,7 +527,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                         DiaryPulse(selectedDate, mode, filteredLogs, repository)
                         if (settings.plusUnlocked || settings.proActive) {
                             Spacer(Modifier.height(8.dp))
-                            SummaryCard(selectedDate, mode, filteredLogs, repository)
+                            SummaryCard(selectedDate, mode, filteredLogs, repository, settings)
                             Spacer(Modifier.height(8.dp))
                             AdvancedFilterPanel(
                                 friends = logs.flatMap { it.friendNames }.distinct().sorted(),
@@ -507,23 +536,33 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                                 selectedCategory = selectedCategory,
                                 cafeFilter = cafeFilter,
                                 caffeinatedOnly = caffeinatedOnly,
+                                wishlistOnly = wishlistOnly,
+                                favoritesOnly = favoritesOnly,
                                 onFriend = { selectedFriend = it },
                                 onCategory = { selectedCategory = it },
                                 onCafeFilter = { cafeFilter = it },
                                 onCaffeinatedOnly = { caffeinatedOnly = it },
+                                onWishlistOnly = { wishlistOnly = it },
+                                onFavoritesOnly = { favoritesOnly = it },
                             )
+                            Spacer(Modifier.height(8.dp))
+                            CafeTimelinePanel(logs = logs, onCafe = { cafeFilter = it })
                         }
-                        if (selectedFriend != null || selectedCategory != null || cafeFilter.isNotBlank() || caffeinatedOnly) {
+                        if (selectedFriend != null || selectedCategory != null || cafeFilter.isNotBlank() || caffeinatedOnly || wishlistOnly || favoritesOnly) {
                             Spacer(Modifier.height(8.dp))
                             ActiveFilters(
                                 selectedFriend = selectedFriend,
                                 selectedCategory = selectedCategory,
                                 cafeFilter = cafeFilter,
                                 caffeinatedOnly = caffeinatedOnly,
+                                wishlistOnly = wishlistOnly,
+                                favoritesOnly = favoritesOnly,
                                 onClearFriend = { selectedFriend = null },
                                 onClearCategory = { selectedCategory = null },
                                 onClearCafe = { cafeFilter = "" },
                                 onClearCaffeinated = { caffeinatedOnly = false },
+                                onClearWishlist = { wishlistOnly = false },
+                                onClearFavorites = { favoritesOnly = false },
                             )
                         }
                         Spacer(Modifier.height(10.dp))
@@ -551,12 +590,14 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                                     date = selectedDate,
                                     logs = repository.logsForDate(filteredLogs, selectedDate),
                                     hasAnyLogs = logs.isNotEmpty(),
-                                    hasActiveFilters = selectedFriend != null || selectedCategory != null || cafeFilter.isNotBlank() || caffeinatedOnly,
+                                    hasActiveFilters = selectedFriend != null || selectedCategory != null || cafeFilter.isNotBlank() || caffeinatedOnly || wishlistOnly || favoritesOnly,
                                     onClearFilters = {
                                         selectedFriend = null
                                         selectedCategory = null
                                         cafeFilter = ""
                                         caffeinatedOnly = false
+                                        wishlistOnly = false
+                                        favoritesOnly = false
                                     },
                                     onDetails = { detailLog = it },
                                     onRepeat = { log -> scope.launch { repeatLog(log) } },
@@ -665,6 +706,9 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                         onExportRecap = {
                             shareRecap(context, selectedDate, mode, logs, repository)
                         },
+                        onExportBackup = {
+                            shareLocalBackup(context, logs, settings)
+                        },
                     )
                 }
             }
@@ -684,7 +728,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
         EntryDialog(
             pendingLog = item,
             onDismiss = { pending = null },
-            onSave = { title, category, caffeine, cafe, place, friends ->
+            onSave = { title, category, caffeine, cafe, place, friends, calories, priceCents, rating, orderDetails, isWishlist, reaction, favorite ->
                 val log = FoodLog(
                     id = UUID.randomUUID().toString(),
                     timestamp = System.currentTimeMillis(),
@@ -697,9 +741,16 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                     locationName = place,
                     latitude = item.location.latitude,
                     longitude = item.location.longitude,
-                        friendNames = friends,
-                        sticker = stickerForPack(settings.stickerPack),
-                    )
+                    friendNames = friends,
+                    sticker = stickerForPack(settings.stickerPack),
+                    calories = calories,
+                    priceCents = priceCents,
+                    rating = rating,
+                    orderDetails = orderDetails,
+                    isWishlist = isWishlist,
+                    reaction = reaction,
+                    favorite = favorite,
+                )
                 showLogImmediately(log)
                 selectedDate = LocalDate.now()
                 mode = CalendarMode.Day
@@ -1182,10 +1233,12 @@ private fun SettingsScreen(
     onBackupNow: suspend () -> Unit,
     onRestoreCloud: suspend () -> Unit,
     onExportRecap: () -> Unit,
+    onExportBackup: () -> Unit,
 ) {
     var displayName by remember(settings.displayName) { mutableStateOf(settings.displayName) }
     var username by remember(settings.username) { mutableStateOf(settings.username) }
     var categoryName by remember { mutableStateOf("") }
+    var caffeineBudget by remember(settings.caffeineBudgetMg) { mutableStateOf(settings.caffeineBudgetMg.toString()) }
     val scope = rememberCoroutineScope()
     var profileSaving by remember { mutableStateOf(false) }
     var profileError by remember { mutableStateOf<String?>(null) }
@@ -1296,6 +1349,39 @@ private fun SettingsScreen(
                         Spacer(Modifier.width(8.dp))
                         Text(if (shareDayCreating) "Creating link" else "Create public day link")
                     }
+                }
+            }
+        }
+        item {
+            Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Daily caffeine budget", fontWeight = FontWeight.Black)
+                    Text("Nibbl compares day/week recaps against this soft target.", color = MaterialTheme.colorScheme.secondary)
+                    OutlinedTextField(
+                        value = caffeineBudget,
+                        onValueChange = { caffeineBudget = it.filter(Char::isDigit).take(4) },
+                        label = { Text("Caffeine mg") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    Button(
+                        onClick = { onSettings(settings.copy(caffeineBudgetMg = caffeineBudget.toIntOrNull() ?: 0)) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Save budget") }
+                }
+            }
+        }
+        item {
+            Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Backup + quick tools", fontWeight = FontWeight.Black)
+                    Text("Export a local metadata backup and use the home-screen widget or app shortcut for quick-add.", color = MaterialTheme.colorScheme.secondary)
+                    Button(onClick = onExportBackup, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Export local backup")
+                    }
+                    Text("Tip: add the Nibbl widget from your launcher for one-tap logging.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                 }
             }
         }
@@ -1760,10 +1846,14 @@ private fun AdvancedFilterPanel(
     selectedCategory: DrinkCategory?,
     cafeFilter: String,
     caffeinatedOnly: Boolean,
+    wishlistOnly: Boolean,
+    favoritesOnly: Boolean,
     onFriend: (String?) -> Unit,
     onCategory: (DrinkCategory?) -> Unit,
     onCafeFilter: (String) -> Unit,
     onCaffeinatedOnly: (Boolean) -> Unit,
+    onWishlistOnly: (Boolean) -> Unit,
+    onFavoritesOnly: (Boolean) -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -1788,6 +1878,20 @@ private fun AdvancedFilterPanel(
                     Text("Show logs with caffeine entered.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                 }
                 Switch(checked = caffeinatedOnly, onCheckedChange = onCaffeinatedOnly)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Want-to-try only", fontWeight = FontWeight.Bold)
+                    Text("Collect saved ideas and future cafe orders.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                }
+                Switch(checked = wishlistOnly, onCheckedChange = onWishlistOnly)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Favorites only", fontWeight = FontWeight.Bold)
+                    Text("Show your saved loves.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                }
+                Switch(checked = favoritesOnly, onCheckedChange = onFavoritesOnly)
             }
         }
     }
@@ -1830,12 +1934,16 @@ private fun ActiveFilters(
     selectedCategory: DrinkCategory?,
     cafeFilter: String,
     caffeinatedOnly: Boolean,
+    wishlistOnly: Boolean,
+    favoritesOnly: Boolean,
     onClearFriend: () -> Unit,
     onClearCategory: () -> Unit,
     onClearCafe: () -> Unit,
     onClearCaffeinated: () -> Unit,
+    onClearWishlist: () -> Unit,
+    onClearFavorites: () -> Unit,
 ) {
-    if (selectedFriend == null && selectedCategory == null && cafeFilter.isBlank() && !caffeinatedOnly) return
+    if (selectedFriend == null && selectedCategory == null && cafeFilter.isBlank() && !caffeinatedOnly && !wishlistOnly && !favoritesOnly) return
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1870,11 +1978,25 @@ private fun ActiveFilters(
                 leadingIcon = { Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(16.dp)) },
             )
         }
+        if (wishlistOnly) {
+            AssistChip(
+                onClick = onClearWishlist,
+                label = { Text("Want-to-try") },
+                leadingIcon = { Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(16.dp)) },
+            )
+        }
+        if (favoritesOnly) {
+            AssistChip(
+                onClick = onClearFavorites,
+                label = { Text("Favorites") },
+                leadingIcon = { Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(16.dp)) },
+            )
+        }
     }
 }
 
 @Composable
-private fun SummaryCard(date: LocalDate, mode: CalendarMode, logs: List<FoodLog>, repository: FoodLogRepository) {
+private fun SummaryCard(date: LocalDate, mode: CalendarMode, logs: List<FoodLog>, repository: FoodLogRepository, settings: AppSettings) {
     val scopedLogs = when (mode) {
         CalendarMode.Month -> logs.filter { it.loggedDate() in YearMonth.from(date).atDay(1)..YearMonth.from(date).atEndOfMonth() }
         CalendarMode.Week -> {
@@ -1885,8 +2007,11 @@ private fun SummaryCard(date: LocalDate, mode: CalendarMode, logs: List<FoodLog>
         CalendarMode.Day -> repository.logsForDate(logs, date)
     }
     val totalCaffeine = scopedLogs.mapNotNull { it.caffeineMg }.sum()
+    val totalCalories = scopedLogs.mapNotNull { it.calories }.sum()
+    val totalSpend = scopedLogs.mapNotNull { it.priceCents }.sum()
     val topCategory = scopedLogs.groupingBy { it.category }.eachCount().maxByOrNull { it.value }?.key?.label ?: "None"
     val friends = scopedLogs.flatMap { it.friendNames }.distinct().size
+    val budget = settings.caffeineBudgetMg.takeIf { it > 0 }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -1902,11 +2027,11 @@ private fun SummaryCard(date: LocalDate, mode: CalendarMode, logs: List<FoodLog>
             Icon(Icons.Rounded.QueryStats, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             SummaryMetric("Entries", scopedLogs.size.toString(), Modifier.weight(1f))
             VerticalDivider(Modifier.height(34.dp))
-            SummaryMetric("Caffeine", "${totalCaffeine}mg", Modifier.weight(1f))
+            SummaryMetric("Caffeine", budget?.let { "${totalCaffeine}/${it}mg" } ?: "${totalCaffeine}mg", Modifier.weight(1.2f))
             VerticalDivider(Modifier.height(34.dp))
-            SummaryMetric(if (friends == 1) "Friend" else "Friends", friends.toString(), Modifier.weight(1f))
+            SummaryMetric("Calories", totalCalories.toString(), Modifier.weight(1f))
             VerticalDivider(Modifier.height(34.dp))
-            SummaryMetric("Top", topCategory, Modifier.weight(1.2f))
+            SummaryMetric("Spend", totalSpend.toPriceText(), Modifier.weight(1f))
         }
     }
 }
@@ -1916,6 +2041,88 @@ private fun SummaryMetric(label: String, value: String, modifier: Modifier = Mod
     Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
         Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun MiniPill(text: String) {
+    Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.64f)) {
+        Text(
+            text,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun RatingPicker(rating: Int?, onRating: (Int?) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Rating", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            FilterChip(selected = rating == null, onClick = { onRating(null) }, label = { Text("Skip") })
+            (1..5).forEach { value ->
+                FilterChip(selected = rating == value, onClick = { onRating(value) }, label = { Text("$value/5") })
+            }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun CuteToggleRow(
+    isWishlist: Boolean,
+    favorite: Boolean,
+    reaction: String,
+    onWishlist: (Boolean) -> Unit,
+    onFavorite: (Boolean) -> Unit,
+    onReaction: (String) -> Unit,
+) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        FilterChip(selected = isWishlist, onClick = { onWishlist(!isWishlist) }, label = { Text("Want to try") })
+        FilterChip(selected = favorite, onClick = { onFavorite(!favorite) }, label = { Text("Favorite") })
+        listOf("cute", "yum", "again", "cozy").forEach { label ->
+            FilterChip(selected = reaction == label, onClick = { onReaction(if (reaction == label) "" else label) }, label = { Text(label) })
+        }
+    }
+}
+
+@Composable
+private fun CafeTimelinePanel(logs: List<FoodLog>, onCafe: (String) -> Unit) {
+    val cafes = logs
+        .filter { it.cafe.isNotBlank() || it.locationName.isNotBlank() }
+        .groupBy { it.cafe.ifBlank { it.locationName } }
+        .entries
+        .sortedByDescending { entry -> entry.value.maxOfOrNull { it.timestamp } ?: 0L }
+        .take(6)
+    if (cafes.isEmpty()) return
+    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f), tonalElevation = 1.dp) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Rounded.LocalCafe, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Text("Cafe timeline", fontWeight = FontWeight.Black)
+            }
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                cafes.forEach { (name, cafeLogs) ->
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f),
+                        modifier = Modifier.clickable { onCafe(name) },
+                    ) {
+                        Column(Modifier.width(148.dp).padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(name, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${cafeLogs.size} logs", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                            cafeLogs.maxByOrNull { it.timestamp }?.let {
+                                Text(it.loggedDate().format(DateTimeFormatter.ofPattern("d MMM")), style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -2329,6 +2536,7 @@ private fun DayCell(day: LocalDate?, selectedDate: LocalDate, logs: List<FoodLog
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun DayLog(
     date: LocalDate,
     logs: List<FoodLog>,
@@ -2406,6 +2614,23 @@ private fun DayLog(
                             }
                             log.caffeineMg?.let {
                                 Text("${it}mg caffeine", style = MaterialTheme.typography.bodyMedium)
+                            }
+                            log.calories?.let {
+                                Text("${it} cal", style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                        if (log.orderDetails.isNotBlank() || log.rating != null || log.priceCents != null || log.isWishlist || log.favorite || log.reaction.isNotBlank()) {
+                            FlowRow(
+                                modifier = Modifier.padding(top = 5.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                log.rating?.let { MiniPill("rating $it/5") }
+                                log.priceCents?.let { MiniPill(it.toPriceText()) }
+                                if (log.orderDetails.isNotBlank()) MiniPill(log.orderDetails)
+                                if (log.isWishlist) MiniPill("want to try")
+                                if (log.favorite) MiniPill("favorite")
+                                if (log.reaction.isNotBlank()) MiniPill(log.reaction)
                             }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2499,6 +2724,7 @@ private fun EmptyDayState(hasAnyLogs: Boolean, hasActiveFilters: Boolean, onClea
 
 @Composable
 private fun LogDetailsDialog(log: FoodLog, onDismiss: () -> Unit, onEdit: () -> Unit, onShare: () -> Unit, onDelete: () -> Unit) {
+    val context = LocalContext.current
     var confirmingDelete by remember(log.id) { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2520,6 +2746,26 @@ private fun LogDetailsDialog(log: FoodLog, onDismiss: () -> Unit, onEdit: () -> 
                 DetailRow("Location", log.locationName.ifBlank { "Not set" })
                 DetailRow("Friends", log.friendNames.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "Solo")
                 DetailRow("Caffeine", log.caffeineMg?.let { "${it}mg" } ?: "Not set")
+                DetailRow("Calories", log.calories?.let { "$it cal" } ?: "Not set")
+                DetailRow("Price", log.priceCents?.toPriceText() ?: "Not set")
+                DetailRow("Rating", log.rating?.let { "$it/5" } ?: "Not set")
+                DetailRow("Order", log.orderDetails.ifBlank { "Not set" })
+                DetailRow("Flags", buildList {
+                    if (log.isWishlist) add("Want to try")
+                    if (log.favorite) add("Favorite")
+                    if (log.reaction.isNotBlank()) add(log.reaction)
+                }.joinToString(", ").ifBlank { "None" })
+                if (log.latitude != null && log.longitude != null) {
+                    Button(
+                        onClick = { openLogMap(context, log) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                    ) {
+                        Icon(Icons.Rounded.Place, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Open map")
+                    }
+                }
             }
         },
         confirmButton = {
@@ -2581,6 +2827,13 @@ private fun LogEditDialog(
     var title by remember(log.id) { mutableStateOf(log.title) }
     var category by remember(log.id) { mutableStateOf(log.category) }
     var caffeine by remember(log.id) { mutableStateOf(log.caffeineMg?.toString().orEmpty()) }
+    var calories by remember(log.id) { mutableStateOf(log.calories?.toString().orEmpty()) }
+    var price by remember(log.id) { mutableStateOf(log.priceCents?.toPriceText().orEmpty()) }
+    var rating by remember(log.id) { mutableStateOf(log.rating) }
+    var orderDetails by remember(log.id) { mutableStateOf(log.orderDetails) }
+    var isWishlist by remember(log.id) { mutableStateOf(log.isWishlist) }
+    var favorite by remember(log.id) { mutableStateOf(log.favorite) }
+    var reaction by remember(log.id) { mutableStateOf(log.reaction) }
     var cafe by remember(log.id) { mutableStateOf(log.cafe) }
     var place by remember(log.id) { mutableStateOf(log.locationName) }
     var selectedFriends by remember(log.id) { mutableStateOf(log.friendNames) }
@@ -2617,6 +2870,18 @@ private fun LogEditDialog(
                 }
                 Text("Add new friends from the Friends tab first.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                 OutlinedTextField(caffeine, { value -> caffeine = value.filter(Char::isDigit).take(4) }, label = { Text("Caffeine mg") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(calories, { value -> calories = value.filter(Char::isDigit).take(5) }, label = { Text("Calories") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(price, { value -> price = value.filter { it.isDigit() || it == '.' }.take(8) }, label = { Text("Price") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(orderDetails, { orderDetails = it.take(120) }, label = { Text("Order notes") }, modifier = Modifier.fillMaxWidth())
+                RatingPicker(rating = rating, onRating = { rating = it })
+                CuteToggleRow(
+                    isWishlist = isWishlist,
+                    favorite = favorite,
+                    reaction = reaction,
+                    onWishlist = { isWishlist = it },
+                    onFavorite = { favorite = it },
+                    onReaction = { reaction = it },
+                )
                 OutlinedTextField(cafe, { cafe = it }, label = { Text("Cafe") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(place, { place = it }, label = { Text("Location") }, modifier = Modifier.fillMaxWidth())
             }
@@ -2628,6 +2893,13 @@ private fun LogEditDialog(
                         title = title.trim(),
                         category = category,
                         caffeineMg = caffeine.toIntOrNull(),
+                        calories = calories.toIntOrNull(),
+                        priceCents = price.toPriceCentsOrNull(),
+                        rating = rating,
+                        orderDetails = orderDetails.trim(),
+                        isWishlist = isWishlist,
+                        reaction = reaction,
+                        favorite = favorite,
                         cafe = cafe.trim(),
                         locationName = place.trim(),
                         friendNames = selectedFriends.distinct(),
@@ -2750,6 +3022,7 @@ private fun ShareLinkDialog(url: String, onDismiss: () -> Unit) {
                         }
                     }
                 }
+                QrCodePreview(url)
                 Button(
                     onClick = {
                         copyInviteLink(context, url)
@@ -2787,6 +3060,25 @@ private fun copyInviteLink(context: Context, url: String) {
     Toast.makeText(context, "Invite copied", Toast.LENGTH_SHORT).show()
 }
 
+@Composable
+private fun QrCodePreview(value: String) {
+    val bitmap = remember(value) { qrBitmap(value) }
+    if (bitmap != null) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = "Invite QR code",
+                modifier = Modifier
+                    .size(154.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color.White)
+                    .padding(10.dp),
+            )
+            Text("Scan to open in Nibbl", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+        }
+    }
+}
+
 private fun shareRecap(
     context: Context,
     date: LocalDate,
@@ -2807,10 +3099,15 @@ private fun shareRecap(
             appendLine("- ${log.title.ifBlank { log.category.label }}${log.cafe.takeIf { cafe -> cafe.isNotBlank() }?.let { " at $it" } ?: ""}")
         }
     }
+    val collageUri = runCatching { createRecapCollage(context, title, scopedLogs) }.getOrNull()
     val sendIntent = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
+        type = if (collageUri != null) "image/png" else "text/plain"
         putExtra(Intent.EXTRA_SUBJECT, "Nibbl recap: $title")
         putExtra(Intent.EXTRA_TEXT, text)
+        collageUri?.let {
+            putExtra(Intent.EXTRA_STREAM, it)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
     }
     context.startActivity(Intent.createChooser(sendIntent, "Share Nibbl recap"))
 }
@@ -2828,9 +3125,11 @@ private fun scopedLogsFor(date: LocalDate, mode: CalendarMode, logs: List<FoodLo
 
 private fun recapTextFor(logs: List<FoodLog>): String {
     val caffeine = logs.sumOf { it.caffeineMg ?: 0 }
+    val calories = logs.sumOf { it.calories ?: 0 }
+    val spend = logs.sumOf { it.priceCents ?: 0 }
     val cafes = logs.map { it.cafe.trim() }.filter { it.isNotBlank() }.distinct().size
     val top = logs.groupingBy { it.category.label }.eachCount().maxByOrNull { it.value }?.key ?: "No top type yet"
-    return "${logs.size} logs, $cafes cafes, ${caffeine}mg caffeine, top type: $top."
+    return "${logs.size} logs, $cafes cafes, ${caffeine}mg caffeine, $calories cal, ${spend.toPriceText()}, top type: $top."
 }
 
 private fun stickerForPack(pack: String): String =
@@ -2841,6 +3140,116 @@ private fun stickerForPack(pack: String): String =
         else -> "yum"
     }
 
+private fun openLogMap(context: Context, log: FoodLog) {
+    val latitude = log.latitude ?: return
+    val longitude = log.longitude ?: return
+    val label = Uri.encode(log.cafe.ifBlank { log.locationName.ifBlank { "Nibbl spot" } })
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("geo:$latitude,$longitude?q=$latitude,$longitude($label)"))
+    runCatching { context.startActivity(intent) }
+        .onFailure { Toast.makeText(context, "No maps app found.", Toast.LENGTH_SHORT).show() }
+}
+
+private fun String.toPriceCentsOrNull(): Int? {
+    val clean = trim()
+    if (clean.isBlank()) return null
+    return runCatching { (clean.toDouble() * 100).toInt().coerceAtLeast(0) }.getOrNull()
+}
+
+private fun Int.toPriceText(): String =
+    "$${this / 100}.${(this % 100).toString().padStart(2, '0')}"
+
+private fun qrBitmap(value: String, size: Int = 420): Bitmap? = runCatching {
+    val hints = mapOf(EncodeHintType.MARGIN to 1)
+    val matrix = MultiFormatWriter().encode(value, BarcodeFormat.QR_CODE, size, size, hints)
+    Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888).apply {
+        for (x in 0 until size) {
+            for (y in 0 until size) {
+                setPixel(x, y, if (matrix[x, y]) 0xFF2B114E.toInt() else 0xFFFFFFFF.toInt())
+            }
+        }
+    }
+}.getOrNull()
+
+private fun createRecapCollage(context: Context, title: String, logs: List<FoodLog>): Uri {
+    val width = 1080
+    val height = 1350
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    canvas.drawColor(0xFFFFF7F2.toInt())
+    paint.color = 0xFF2B114E.toInt()
+    paint.textSize = 58f
+    paint.isFakeBoldText = true
+    canvas.drawText("Nibbl recap", 70f, 105f, paint)
+    paint.textSize = 36f
+    paint.isFakeBoldText = false
+    canvas.drawText(title.take(42), 70f, 160f, paint)
+    paint.textSize = 31f
+    canvas.drawText(recapTextFor(logs).take(58), 70f, 214f, paint)
+
+    val cell = 290
+    val gap = 24
+    logs.take(9).forEachIndexed { index, log ->
+        val row = index / 3
+        val col = index % 3
+        val left = 70 + col * (cell + gap)
+        val top = 280 + row * (cell + gap)
+        val source = BitmapFactory.decodeFile(log.imagePath) ?: return@forEachIndexed
+        canvas.drawBitmap(source, null, android.graphics.Rect(left, top, left + cell, top + cell), paint)
+        source.recycle()
+        paint.color = 0xEFFFFFFF.toInt()
+        canvas.drawRoundRect(left.toFloat(), (top + cell - 48).toFloat(), (left + cell).toFloat(), (top + cell).toFloat(), 22f, 22f, paint)
+        paint.color = 0xFF2B114E.toInt()
+        paint.textSize = 24f
+        canvas.drawText(log.title.ifBlank { log.category.label }.take(18), (left + 16).toFloat(), (top + cell - 16).toFloat(), paint)
+    }
+    paint.color = 0xFF6A4C93.toInt()
+    paint.textSize = 28f
+    canvas.drawText("Made with Nibbl", 70f, 1288f, paint)
+    val dir = File(context.cacheDir, "share").apply { mkdirs() }
+    val file = File(dir, "nibbl-recap-${System.currentTimeMillis()}.png")
+    file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    bitmap.recycle()
+    return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+}
+
+private fun shareLocalBackup(context: Context, logs: List<FoodLog>, settings: AppSettings) {
+    val payload = JSONObject()
+        .put("format", "nibbl-local-backup-v1")
+        .put("exportedAt", System.currentTimeMillis())
+        .put("displayName", settings.displayName)
+        .put("username", settings.username)
+        .put("logs", JSONArray(logs.map { log ->
+            JSONObject()
+                .put("id", log.id)
+                .put("timestamp", log.timestamp)
+                .put("title", log.title)
+                .put("category", log.category.id)
+                .put("caffeineMg", log.caffeineMg ?: JSONObject.NULL)
+                .put("calories", log.calories ?: JSONObject.NULL)
+                .put("priceCents", log.priceCents ?: JSONObject.NULL)
+                .put("rating", log.rating ?: JSONObject.NULL)
+                .put("orderDetails", log.orderDetails)
+                .put("cafe", log.cafe)
+                .put("locationName", log.locationName)
+                .put("friendNames", JSONArray(log.friendNames))
+                .put("isWishlist", log.isWishlist)
+                .put("reaction", log.reaction)
+                .put("favorite", log.favorite)
+        }))
+    val dir = File(context.cacheDir, "share").apply { mkdirs() }
+    val file = File(dir, "nibbl-backup-${System.currentTimeMillis()}.nibbl.json")
+    file.writeText(payload.toString(2))
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "application/json"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        putExtra(Intent.EXTRA_SUBJECT, "Nibbl local backup")
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(intent, "Export Nibbl backup"))
+}
+
 private fun shareInviteLink(context: Context, url: String) {
     val sendIntent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
@@ -2850,14 +3259,14 @@ private fun shareInviteLink(context: Context, url: String) {
 }
 
 @Suppress("DEPRECATION")
-private fun Intent.nibblSharedImageUri(): Uri? {
+private fun Intent.nibblSharedImageUris(): List<Uri> {
     val isImage = type.orEmpty().startsWith("image/")
     return when {
         action == Intent.ACTION_SEND && isImage ->
-            getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
+            listOfNotNull(getParcelableExtra(Intent.EXTRA_STREAM) as? Uri)
         action == Intent.ACTION_SEND_MULTIPLE && isImage ->
-            getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)?.firstOrNull()
-        else -> null
+            getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM).orEmpty()
+        else -> emptyList()
     }
 }
 
@@ -2865,13 +3274,20 @@ private fun Intent.nibblSharedImageUri(): Uri? {
 private fun EntryDialog(
     pendingLog: PendingLog,
     onDismiss: () -> Unit,
-    onSave: (String, DrinkCategory, Int?, String, String, List<String>) -> Unit,
+    onSave: (String, DrinkCategory, Int?, String, String, List<String>, Int?, Int?, Int?, String, Boolean, String, Boolean) -> Unit,
     crewNames: List<String>,
     categories: List<DrinkCategory>,
 ) {
     var title by remember { mutableStateOf("Food + drink") }
     var category by remember(categories) { mutableStateOf(categories.firstOrNull { it == DrinkCategory.Drink } ?: categories.firstOrNull() ?: DrinkCategory.Drink) }
     var caffeine by remember { mutableStateOf("") }
+    var calories by remember { mutableStateOf("") }
+    var price by remember { mutableStateOf("") }
+    var rating by remember { mutableStateOf<Int?>(null) }
+    var orderDetails by remember { mutableStateOf("") }
+    var isWishlist by remember { mutableStateOf(false) }
+    var favorite by remember { mutableStateOf(false) }
+    var reaction by remember { mutableStateOf("") }
     var cafe by remember { mutableStateOf("") }
     var place by remember { mutableStateOf(pendingLog.location.name) }
     var selectedFriends by remember { mutableStateOf(emptyList<String>()) }
@@ -2913,6 +3329,18 @@ private fun EntryDialog(
                 }
                 Text("Add new friends from the Friends tab first.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                 OutlinedTextField(caffeine, { value -> caffeine = value.filter(Char::isDigit).take(4) }, label = { Text("Caffeine mg") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(calories, { value -> calories = value.filter(Char::isDigit).take(5) }, label = { Text("Calories") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(price, { value -> price = value.filter { it.isDigit() || it == '.' }.take(8) }, label = { Text("Price") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(orderDetails, { orderDetails = it.take(120) }, label = { Text("Order notes") }, modifier = Modifier.fillMaxWidth())
+                RatingPicker(rating = rating, onRating = { rating = it })
+                CuteToggleRow(
+                    isWishlist = isWishlist,
+                    favorite = favorite,
+                    reaction = reaction,
+                    onWishlist = { isWishlist = it },
+                    onFavorite = { favorite = it },
+                    onReaction = { reaction = it },
+                )
                 OutlinedTextField(cafe, { cafe = it }, label = { Text("Cafe") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(place, { place = it }, label = { Text("Location") }, modifier = Modifier.fillMaxWidth())
                 if (pendingLog.location.latitude != null) {
@@ -2930,6 +3358,13 @@ private fun EntryDialog(
                         cafe.trim(),
                         place.trim(),
                         selectedFriends.distinct(),
+                        calories.toIntOrNull(),
+                        price.toPriceCentsOrNull(),
+                        rating,
+                        orderDetails.trim(),
+                        isWishlist,
+                        reaction,
+                        favorite,
                     )
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),

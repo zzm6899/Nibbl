@@ -14,14 +14,25 @@ data class FoodLog(
     val longitude: Double?,
     val friendNames: List<String>,
     val sticker: String = "",
+    val calories: Int? = null,
+    val priceCents: Int? = null,
+    val rating: Int? = null,
+    val orderDetails: String = "",
+    val isWishlist: Boolean = false,
+    val reaction: String = "",
+    val favorite: Boolean = false,
 )
 
 data class FoodLogDaySummary(
     val totalEntries: Int,
     val totalCaffeineMg: Int,
+    val totalCalories: Int,
+    val totalSpendCents: Int,
     val categoryCounts: Map<DrinkCategory, Int>,
     val cafeCount: Int,
     val friendCount: Int,
+    val favoriteCount: Int,
+    val wishlistCount: Int,
 )
 
 class DrinkCategory(

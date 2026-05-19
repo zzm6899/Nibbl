@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher"
+        android:shortcutDisabledMessage="@string/shortcut_disabled"
+        android:shortcutId="quick_add"
+        android:shortcutLongLabel="@string/shortcut_quick_add_long"
+        android:shortcutShortLabel="@string/shortcut_quick_add_short">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="nibbl://quick-add"
+            android:targetClass="com.foodtracker.diary.MainActivity"
+            android:targetPackage="au.z2hs.nibbl" />
+    </shortcut>
+</shortcuts>
