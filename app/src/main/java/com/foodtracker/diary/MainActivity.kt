@@ -191,6 +191,14 @@ private data class PendingLog(
     val location: DiaryLocation,
 )
 
+private data class QuickEntryPreset(
+    val label: String,
+    val categoryId: String,
+    val caffeineMg: String,
+    val calories: String,
+    val reaction: String,
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUris: List<Uri> = emptyList()) {
@@ -910,17 +918,19 @@ private fun CuteMotionBackground() {
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier
-                .size(150.dp)
-                .align(Alignment.TopEnd)
-                .graphicsLayer(alpha = 0.2f, translationY = floatA, translationX = -floatA)
-                .background(MaterialTheme.colorScheme.secondaryContainer, CircleShape),
-        )
-        Box(
-            Modifier
-                .size(116.dp)
-                .align(Alignment.CenterStart)
-                .graphicsLayer(alpha = 0.18f, translationY = floatB)
-                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                .fillMaxWidth()
+                .height(118.dp)
+                .align(Alignment.TopCenter)
+                .graphicsLayer(alpha = 0.24f, translationY = floatA)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.secondaryContainer,
+                            MaterialTheme.colorScheme.tertiaryContainer,
+                            MaterialTheme.colorScheme.primaryContainer,
+                        )
+                    )
+                ),
         )
         Icon(
             Icons.Rounded.AutoAwesome,
@@ -931,6 +941,16 @@ private fun CuteMotionBackground() {
                 .padding(28.dp)
                 .graphicsLayer(rotationZ = floatA)
                 .size(24.dp),
+        )
+        Icon(
+            Icons.Rounded.LocalCafe,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = twinkle * 0.72f),
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 34.dp)
+                .graphicsLayer(translationY = floatB, rotationZ = -floatA / 3f)
+                .size(30.dp),
         )
     }
 }
@@ -1023,6 +1043,7 @@ private fun ModePicker(mode: CalendarMode, onMode: (CalendarMode) -> Unit) {
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun DiaryPulse(date: LocalDate, mode: CalendarMode, logs: List<FoodLog>, repository: FoodLogRepository) {
     val scopedLogs = when (mode) {
         CalendarMode.Month -> logs.filter { it.loggedDate() in YearMonth.from(date).atDay(1)..YearMonth.from(date).atEndOfMonth() }
@@ -1035,28 +1056,63 @@ private fun DiaryPulse(date: LocalDate, mode: CalendarMode, logs: List<FoodLog>,
     }
     val cafes = scopedLogs.map { it.cafe.trim() }.filter { it.isNotBlank() }.distinct().size
     val friends = scopedLogs.flatMap { it.friendNames }.distinct().size
+    val calories = scopedLogs.sumOf { it.calories ?: 0 }
+    val favorites = scopedLogs.count { it.favorite }
+    val topCategory = scopedLogs
+        .groupingBy { it.category.label }
+        .eachCount()
+        .maxByOrNull { it.value }
+        ?.key
+        ?: "No type yet"
+    val streak = currentLogStreak(logs)
+    val title = when (mode) {
+        CalendarMode.Month -> "Month glow"
+        CalendarMode.Week -> "Week glow"
+        CalendarMode.Day -> "Day glow"
+    }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
+        tonalElevation = 1.dp,
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(18.dp))
-            Text(
-                "${scopedLogs.size} saved",
-                fontWeight = FontWeight.Black,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text("•", color = MaterialTheme.colorScheme.secondary)
-            Text("$cafes cafes", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.SemiBold)
-            Text("•", color = MaterialTheme.colorScheme.secondary)
-            Text("$friends friends", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(18.dp))
+                Text(title, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
+            }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                PulseChip("${scopedLogs.size} saved")
+                PulseChip("$cafes cafes")
+                PulseChip("$friends friends")
+                PulseChip("$calories cal")
+                PulseChip("$favorites favorites")
+                PulseChip("$streak day streak")
+                PulseChip(topCategory)
+            }
         }
+    }
+}
+
+@Composable
+private fun PulseChip(text: String) {
+    Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)) {
+        Text(
+            text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -1244,7 +1300,6 @@ private fun SettingsScreen(
     var profileError by remember { mutableStateOf<String?>(null) }
     var shareDayCreating by remember { mutableStateOf(false) }
     var cloudWorking by remember { mutableStateOf(false) }
-    val context = LocalContext.current
     LazyColumn(contentPadding = PaddingValues(bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
@@ -1416,28 +1471,6 @@ private fun SettingsScreen(
                 },
                 onExportRecap = onExportRecap,
             )
-        }
-        item {
-            Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Safety and support", fontWeight = FontWeight.Black)
-                    Text("Report child safety concerns, harmful content, or shared links that need review.", color = MaterialTheme.colorScheme.secondary)
-                    Button(
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_SENDTO).apply {
-                                data = Uri.parse("mailto:help@z2hs.au?subject=Nibbl%20child%20safety%20concern")
-                            }
-                            runCatching { context.startActivity(intent) }
-                                .onFailure { Toast.makeText(context, "Email help@z2hs.au to report a concern.", Toast.LENGTH_LONG).show() }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Report a safety concern")
-                    }
-                }
-            }
         }
         item {
             Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
@@ -2072,6 +2105,63 @@ private fun RatingPicker(rating: Int?, onRating: (Int?) -> Unit) {
 }
 
 @Composable
+private fun EntrySectionHeader(step: String, title: String, subtitle: String? = null) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
+            Text(
+                step,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.secondary,
+            )
+        }
+        Column(Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (subtitle != null) {
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun QuickPresetRow(categories: List<DrinkCategory>, onPreset: (QuickEntryPreset, DrinkCategory) -> Unit) {
+    val presets = listOf(
+        QuickEntryPreset("Matcha", "matcha", "80", "120", "cozy"),
+        QuickEntryPreset("Coffee", "coffee", "95", "40", "again"),
+        QuickEntryPreset("Tea", "tea", "45", "10", "cozy"),
+        QuickEntryPreset("Boba", "boba", "60", "320", "yum"),
+        QuickEntryPreset("Smoothie", "smoothie", "", "260", "fresh"),
+        QuickEntryPreset("Snack", "snack", "", "180", "yum"),
+        QuickEntryPreset("Meal", "meal", "", "520", "again"),
+        QuickEntryPreset("Dessert", "dessert", "", "340", "cute"),
+    )
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        presets.forEach { preset ->
+            val category = categories.firstOrNull { it.id == preset.categoryId }
+                ?: categories.firstOrNull { it.label.equals(preset.label, ignoreCase = true) }
+                ?: categories.firstOrNull { it.id == DrinkCategory.Drink.id }
+                ?: categories.firstOrNull()
+                ?: DrinkCategory.Drink
+            AssistChip(
+                onClick = { onPreset(preset, category) },
+                label = { Text(preset.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                leadingIcon = {
+                    Box(
+                        Modifier
+                            .size(14.dp)
+                            .clip(CircleShape)
+                            .background(categoryColor(category))
+                    )
+                },
+            )
+        }
+    }
+}
+
+@Composable
 @OptIn(ExperimentalLayoutApi::class)
 private fun CuteToggleRow(
     isWishlist: Boolean,
@@ -2442,13 +2532,6 @@ private fun WeekDrinkCard(day: LocalDate, logs: List<FoodLog>, isSelected: Boole
 private fun DayCell(day: LocalDate?, selectedDate: LocalDate, logs: List<FoodLog>, onDate: (LocalDate) -> Unit, modifier: Modifier = Modifier) {
     val isToday = day == LocalDate.now()
     val isSelected = day == selectedDate
-    val transition = rememberInfiniteTransition(label = "day-cell")
-    val wiggle by transition.animateFloat(
-        initialValue = -1.2f,
-        targetValue = 1.2f,
-        animationSpec = infiniteRepeatable(tween(1800), RepeatMode.Reverse),
-        label = "cellWiggle",
-    )
     val cellColor = when {
         isSelected -> MaterialTheme.colorScheme.tertiaryContainer
         isToday -> MaterialTheme.colorScheme.primaryContainer
@@ -2461,7 +2544,6 @@ private fun DayCell(day: LocalDate?, selectedDate: LocalDate, logs: List<FoodLog
             .graphicsLayer(
                 scaleX = if (isSelected) 1.03f else 1f,
                 scaleY = if (isSelected) 1.03f else 1f,
-                rotationZ = if (logs.isNotEmpty() && !isSelected) wiggle else 0f,
             )
             .clip(RoundedCornerShape(14.dp))
             .border(
@@ -2490,37 +2572,44 @@ private fun DayCell(day: LocalDate?, selectedDate: LocalDate, logs: List<FoodLog
                     }
                 }
             }
-            Box(
+            Row(
                 Modifier
                     .fillMaxWidth()
-                    .height(50.dp),
+                    .height(50.dp)
+                    .padding(top = 5.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 logs.take(3).forEachIndexed { index, log ->
-                    Image(
-                        painter = rememberAsyncImagePainter(File(log.imagePath)),
-                        contentDescription = log.title,
+                    Box(
                         modifier = Modifier
-                            .padding(start = (index * 12).dp, top = (index * 4).dp)
-                            .size(36.dp)
+                            .weight(1f)
+                            .height(45.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(MaterialTheme.colorScheme.background)
                             .border(1.dp, MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)),
-                        contentScale = ContentScale.Fit,
-                    )
-                }
-                if (logs.size > 3) {
-                    Surface(
-                        modifier = Modifier.align(Alignment.BottomEnd),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary,
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            "+${logs.size - 3}",
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            fontWeight = FontWeight.Black,
+                        Image(
+                            painter = rememberAsyncImagePainter(File(log.imagePath)),
+                            contentDescription = log.title,
+                            modifier = Modifier.fillMaxSize().padding(2.dp),
+                            contentScale = ContentScale.Fit,
                         )
+                        if (index == 2 && logs.size > 3) {
+                            Surface(
+                                modifier = Modifier.align(Alignment.BottomEnd),
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary,
+                            ) {
+                                Text(
+                                    "+${logs.size - 3}",
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    fontWeight = FontWeight.Black,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -2849,26 +2938,23 @@ private fun LogEditDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                EntrySectionHeader("1", "Photo cutout", "Check the before and clean cutout.")
                 PreviewImageTile("Cutout", log.imagePath, Modifier.fillMaxWidth(), ContentScale.Fit)
+                EntrySectionHeader("2", "Basics", "Use a preset or edit the details.")
+                QuickPresetRow(categories) { preset, presetCategory ->
+                    title = preset.label
+                    category = presetCategory
+                    if (preset.caffeineMg.isNotBlank()) caffeine = preset.caffeineMg
+                    if (preset.calories.isNotBlank()) calories = preset.calories
+                    reaction = preset.reaction
+                }
                 OutlinedTextField(title, { title = it }, label = { Text("Drink or food") }, modifier = Modifier.fillMaxWidth())
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     categories.forEach {
                         FilterChip(selected = category == it, onClick = { category = it }, label = { Text(it.label) })
                     }
                 }
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    friendSuggestions.forEach { friend ->
-                        FilterChip(
-                            selected = selectedFriends.contains(friend),
-                            onClick = {
-                                selectedFriends = if (selectedFriends.contains(friend)) selectedFriends - friend else selectedFriends + friend
-                            },
-                            label = { Text(friend) },
-                            leadingIcon = { FriendInitial(friend, 20.dp) },
-                        )
-                    }
-                }
-                Text("Add new friends from the Friends tab first.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                EntrySectionHeader("3", "Numbers + vibe", "Calories, price, rating, and cute tags.")
                 OutlinedTextField(caffeine, { value -> caffeine = value.filter(Char::isDigit).take(4) }, label = { Text("Caffeine mg") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(calories, { value -> calories = value.filter(Char::isDigit).take(5) }, label = { Text("Calories") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(price, { value -> price = value.filter { it.isDigit() || it == '.' }.take(8) }, label = { Text("Price") }, modifier = Modifier.fillMaxWidth())
@@ -2882,6 +2968,20 @@ private fun LogEditDialog(
                     onFavorite = { favorite = it },
                     onReaction = { reaction = it },
                 )
+                EntrySectionHeader("4", "Cafe + friends", "Tag who was there and where it came from.")
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    friendSuggestions.forEach { friend ->
+                        FilterChip(
+                            selected = selectedFriends.contains(friend),
+                            onClick = {
+                                selectedFriends = if (selectedFriends.contains(friend)) selectedFriends - friend else selectedFriends + friend
+                            },
+                            label = { Text(friend) },
+                            leadingIcon = { FriendInitial(friend, 20.dp) },
+                        )
+                    }
+                }
+                Text("Add new friends from the Friends tab first.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                 OutlinedTextField(cafe, { cafe = it }, label = { Text("Cafe") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(place, { place = it }, label = { Text("Location") }, modifier = Modifier.fillMaxWidth())
             }
@@ -3303,14 +3403,37 @@ private fun EntryDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                EntrySectionHeader("1", "Photo cutout", "Nibbl keeps both the original and clean cutout.")
                 BeforeAfterPreview(pendingLog)
+                EntrySectionHeader("2", "What are you saving?", "Tap a preset, then tweak anything.")
+                QuickPresetRow(categories) { preset, presetCategory ->
+                    title = preset.label
+                    category = presetCategory
+                    caffeine = preset.caffeineMg
+                    calories = preset.calories
+                    reaction = preset.reaction
+                }
                 OutlinedTextField(title, { title = it }, label = { Text("Drink or food") }, modifier = Modifier.fillMaxWidth())
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     categories.forEach {
                         FilterChip(selected = category == it, onClick = { category = it }, label = { Text(it.label) })
                     }
                 }
-                Text("Friends", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                EntrySectionHeader("3", "Numbers + vibe", "Optional details for better recaps.")
+                OutlinedTextField(caffeine, { value -> caffeine = value.filter(Char::isDigit).take(4) }, label = { Text("Caffeine mg") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(calories, { value -> calories = value.filter(Char::isDigit).take(5) }, label = { Text("Calories") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(price, { value -> price = value.filter { it.isDigit() || it == '.' }.take(8) }, label = { Text("Price") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(orderDetails, { orderDetails = it.take(120) }, label = { Text("Order notes") }, modifier = Modifier.fillMaxWidth())
+                RatingPicker(rating = rating, onRating = { rating = it })
+                CuteToggleRow(
+                    isWishlist = isWishlist,
+                    favorite = favorite,
+                    reaction = reaction,
+                    onWishlist = { isWishlist = it },
+                    onFavorite = { favorite = it },
+                    onReaction = { reaction = it },
+                )
+                EntrySectionHeader("4", "Cafe + friends", "Keep the memory easy to find later.")
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     friendSuggestions.forEach { friend ->
                         FilterChip(
@@ -3328,19 +3451,6 @@ private fun EntryDialog(
                     }
                 }
                 Text("Add new friends from the Friends tab first.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
-                OutlinedTextField(caffeine, { value -> caffeine = value.filter(Char::isDigit).take(4) }, label = { Text("Caffeine mg") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(calories, { value -> calories = value.filter(Char::isDigit).take(5) }, label = { Text("Calories") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(price, { value -> price = value.filter { it.isDigit() || it == '.' }.take(8) }, label = { Text("Price") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(orderDetails, { orderDetails = it.take(120) }, label = { Text("Order notes") }, modifier = Modifier.fillMaxWidth())
-                RatingPicker(rating = rating, onRating = { rating = it })
-                CuteToggleRow(
-                    isWishlist = isWishlist,
-                    favorite = favorite,
-                    reaction = reaction,
-                    onWishlist = { isWishlist = it },
-                    onFavorite = { favorite = it },
-                    onReaction = { reaction = it },
-                )
                 OutlinedTextField(cafe, { cafe = it }, label = { Text("Cafe") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(place, { place = it }, label = { Text("Location") }, modifier = Modifier.fillMaxWidth())
                 if (pendingLog.location.latitude != null) {
@@ -3447,5 +3557,16 @@ private fun weekLabels(weekStartsOnMonday: Boolean): List<String> =
 
 private fun FoodLog.loggedDate(): LocalDate =
     Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault()).toLocalDate()
+
+private fun currentLogStreak(logs: List<FoodLog>, today: LocalDate = LocalDate.now()): Int {
+    val days = logs.map { it.loggedDate() }.toSet()
+    var cursor = if (days.contains(today)) today else today.minusDays(1)
+    var count = 0
+    while (days.contains(cursor)) {
+        count += 1
+        cursor = cursor.minusDays(1)
+    }
+    return count
+}
 
 private fun categoryColor(category: DrinkCategory): Color = Color(category.colorArgb)

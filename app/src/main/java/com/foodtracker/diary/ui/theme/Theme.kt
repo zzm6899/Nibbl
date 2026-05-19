@@ -8,18 +8,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 private val PastelColors = lightColorScheme(
-    primary = Color(0xFF6F9A63),
+    primary = Color(0xFF6B9360),
     onPrimary = Color.White,
-    secondary = Color(0xFFE87A78),
-    tertiary = Color(0xFFF4B95D),
-    background = Color(0xFFFFF7EE),
-    surface = Color(0xFFFFFCF8),
-    surfaceVariant = Color(0xFFF8E8D7),
-    primaryContainer = Color(0xFFE7F0D5),
-    secondaryContainer = Color(0xFFFFDFDC),
-    tertiaryContainer = Color(0xFFFFE6B8),
-    onBackground = Color(0xFF322D2A),
-    onSurface = Color(0xFF322D2A),
+    secondary = Color(0xFFE66F9D),
+    tertiary = Color(0xFF4AA7C5),
+    background = Color(0xFFFFF7FB),
+    surface = Color(0xFFFFFFFC),
+    surfaceVariant = Color(0xFFF1E6FF),
+    primaryContainer = Color(0xFFDFF3D8),
+    secondaryContainer = Color(0xFFFFE2EE),
+    tertiaryContainer = Color(0xFFDDF5FF),
+    onBackground = Color(0xFF302B31),
+    onSurface = Color(0xFF302B31),
 )
 
 private val BerryColors = lightColorScheme(
