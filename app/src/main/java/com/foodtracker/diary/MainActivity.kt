@@ -132,8 +132,10 @@ import com.foodtracker.diary.data.LocationHelper
 import com.foodtracker.diary.data.ShareLinkTokenHelper
 import com.foodtracker.diary.data.toFriendInviteCode
 import com.foodtracker.diary.ui.theme.FoodDiaryTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.Instant
 import java.time.LocalDate
@@ -250,9 +252,10 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                 section = AppSection.Settings
                 return
             }
-            val original = context.contentResolver.openInputStream(uri)?.use { input ->
-                repository.saveBytes(input.readBytes(), ".jpg")
+            val originalBytes = withContext(Dispatchers.IO) {
+                context.contentResolver.openInputStream(uri)?.use { input -> input.readBytes() }
             } ?: error("Could not open selected image")
+            val original = repository.saveBytes(originalBytes, ".jpg")
             processingPreviewPath = original
             val cutout = repository.saveBytes(remover.removeToPngBytes(uri), ".png")
             settings = settingsRepository.recordBackgroundRemoval(monthKey)
@@ -275,10 +278,21 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
         backendDrinkReporter.submit(registered.shareHost, log, registered)
     }
 
-    fun submitLogInBackground(log: FoodLog) {
+    fun persistLogInBackground(log: FoodLog) {
         scope.launch {
-            runCatching { submitLog(log) }
-                .onFailure { error = "Saved locally. Sync will retry when your server is reachable." }
+            runCatching { repository.save(log) }
+                .onFailure { error = "Could not save this log. Try again." }
+                .onSuccess {
+                    runCatching { submitLog(log) }
+                        .onFailure { error = "Saved locally. Check your server before sharing." }
+                }
+        }
+    }
+
+    fun deleteLogInBackground(id: String) {
+        scope.launch {
+            runCatching { repository.delete(id) }
+                .onFailure { error = "Could not delete this log. Try again." }
         }
     }
 
@@ -324,9 +338,8 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
             id = UUID.randomUUID().toString(),
             timestamp = selectedDate.atTime(LocalTime.now()).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
         )
-        repository.save(repeated)
         showLogImmediately(repeated)
-        submitLogInBackground(repeated)
+        persistLogInBackground(repeated)
         mode = CalendarMode.Day
     }
 
@@ -625,28 +638,25 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
             pendingLog = item,
             onDismiss = { pending = null },
             onSave = { title, category, caffeine, cafe, place, friends ->
-                scope.launch {
-                    val log = FoodLog(
-                        id = UUID.randomUUID().toString(),
-                        timestamp = System.currentTimeMillis(),
-                        imagePath = item.cutoutPath,
-                        originalImagePath = item.originalPath,
-                        title = title,
-                        category = category,
-                        caffeineMg = caffeine,
-                        cafe = cafe,
-                        locationName = place,
-                        latitude = item.location.latitude,
-                        longitude = item.location.longitude,
-                        friendNames = friends,
-                    )
-                    repository.save(log)
-                    showLogImmediately(log)
-                    selectedDate = LocalDate.now()
-                    mode = CalendarMode.Day
-                    pending = null
-                    submitLogInBackground(log)
-                }
+                val log = FoodLog(
+                    id = UUID.randomUUID().toString(),
+                    timestamp = System.currentTimeMillis(),
+                    imagePath = item.cutoutPath,
+                    originalImagePath = item.originalPath,
+                    title = title,
+                    category = category,
+                    caffeineMg = caffeine,
+                    cafe = cafe,
+                    locationName = place,
+                    latitude = item.location.latitude,
+                    longitude = item.location.longitude,
+                    friendNames = friends,
+                )
+                showLogImmediately(log)
+                selectedDate = LocalDate.now()
+                mode = CalendarMode.Day
+                pending = null
+                persistLogInBackground(log)
             },
             crewNames = crew.map { it.displayName },
             categories = categories,
@@ -668,11 +678,9 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                 }
             },
             onDelete = {
-                scope.launch {
-                    repository.delete(log.id)
-                    hideLogImmediately(log.id)
-                    detailLog = null
-                }
+                hideLogImmediately(log.id)
+                detailLog = null
+                deleteLogInBackground(log.id)
             },
         )
     }
@@ -684,12 +692,9 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
             categories = categories,
             onDismiss = { editLog = null },
             onSave = { updated ->
-                scope.launch {
-                    repository.update(updated)
-                    showLogImmediately(updated)
-                    editLog = null
-                    submitLogInBackground(updated)
-                }
+                showLogImmediately(updated)
+                editLog = null
+                persistLogInBackground(updated)
             },
         )
     }
@@ -2037,22 +2042,38 @@ private fun DayCell(day: LocalDate?, selectedDate: LocalDate, logs: List<FoodLog
                     }
                 }
             }
-            Row(
+            Box(
                 Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    .height(50.dp),
             ) {
-                logs.take(4).forEach {
+                logs.take(3).forEachIndexed { index, log ->
                     Image(
-                        painter = rememberAsyncImagePainter(File(it.imagePath)),
-                        contentDescription = it.title,
+                        painter = rememberAsyncImagePainter(File(log.imagePath)),
+                        contentDescription = log.title,
                         modifier = Modifier
-                            .size(32.dp)
+                            .padding(start = (index * 12).dp, top = (index * 4).dp)
+                            .size(36.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.background),
+                            .background(MaterialTheme.colorScheme.background)
+                            .border(1.dp, MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)),
                         contentScale = ContentScale.Fit,
                     )
+                }
+                if (logs.size > 3) {
+                    Surface(
+                        modifier = Modifier.align(Alignment.BottomEnd),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary,
+                    ) {
+                        Text(
+                            "+${logs.size - 3}",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontWeight = FontWeight.Black,
+                        )
+                    }
                 }
             }
             if (logs.any { it.friendNames.isNotEmpty() }) {

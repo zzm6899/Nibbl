@@ -7,7 +7,9 @@ import android.content.pm.PackageManager
 import android.location.Geocoder
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.LocationServices
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.coroutines.resume
 
@@ -30,14 +32,16 @@ class LocationHelper(private val context: Context) {
                 .addOnFailureListener { if (continuation.isActive) continuation.resume(null) }
         } ?: return DiaryLocation("", null, null)
 
-        val name = runCatching {
-            @Suppress("DEPRECATION")
-            Geocoder(context, Locale.getDefault())
-                .getFromLocation(location.latitude, location.longitude, 1)
-                ?.firstOrNull()
-                ?.let { listOfNotNull(it.featureName, it.thoroughfare, it.locality).distinct().joinToString(", ") }
-                .orEmpty()
-        }.getOrDefault("")
+        val name = withContext(Dispatchers.IO) {
+            runCatching {
+                @Suppress("DEPRECATION")
+                Geocoder(context, Locale.getDefault())
+                    .getFromLocation(location.latitude, location.longitude, 1)
+                    ?.firstOrNull()
+                    ?.let { listOfNotNull(it.featureName, it.thoroughfare, it.locality).distinct().joinToString(", ") }
+                    .orEmpty()
+            }.getOrDefault("")
+        }
 
         return DiaryLocation(name, location.latitude, location.longitude)
     }

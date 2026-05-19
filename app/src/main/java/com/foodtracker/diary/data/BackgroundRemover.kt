@@ -6,7 +6,9 @@ import android.net.Uri
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.segmentation.subject.SubjectSegmentation
 import com.google.mlkit.vision.segmentation.subject.SubjectSegmenterOptions
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -21,7 +23,7 @@ class BackgroundRemover(private val context: Context) {
 
     suspend fun removeToPngBytes(uri: Uri): ByteArray {
         SubjectSegmentationModuleInstaller.ensureInstalled(context, segmenter)
-        val image = InputImage.fromFilePath(context, uri)
+        val image = withContext(Dispatchers.IO) { InputImage.fromFilePath(context, uri) }
         val foreground = suspendCancellableCoroutine<Bitmap> { continuation ->
             segmenter.process(image)
                 .addOnSuccessListener { result ->
@@ -38,12 +40,14 @@ class BackgroundRemover(private val context: Context) {
                     if (continuation.isActive) continuation.resumeWithException(it)
                 }
         }
-        return ByteArrayOutputStream().use { stream ->
-            val compressed = foreground.compress(Bitmap.CompressFormat.PNG, 100, stream)
-            foreground.recycle()
-            if (!compressed) throw IllegalStateException("Could not encode foreground image")
-            stream.toByteArray().also {
-                if (it.isEmpty()) throw IllegalStateException("Encoded foreground image was empty")
+        return withContext(Dispatchers.Default) {
+            ByteArrayOutputStream().use { stream ->
+                val compressed = foreground.compress(Bitmap.CompressFormat.PNG, 100, stream)
+                foreground.recycle()
+                if (!compressed) throw IllegalStateException("Could not encode foreground image")
+                stream.toByteArray().also {
+                    if (it.isEmpty()) throw IllegalStateException("Encoded foreground image was empty")
+                }
             }
         }
     }
