@@ -650,6 +650,14 @@ a.button.secondary, button.secondary {
   place-items: center;
 }
 
+.upload-scene {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+}
+
 .upload-card {
   width: min(250px, 72%);
   display: grid;
@@ -686,8 +694,6 @@ a.button.secondary, button.secondary {
 .upload-progress {
   width: min(270px, 76%);
   height: 10px;
-  align-self: end;
-  margin-bottom: 18px;
   border-radius: 999px;
   background: #eaded6;
   overflow: hidden;
@@ -744,7 +750,11 @@ a.button.secondary, button.secondary {
 }
 
 .calendar-scene {
-  place-items: end center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
   animation: calendarScene 6.8s ease-in-out infinite;
 }
 
@@ -753,7 +763,6 @@ a.button.secondary, button.secondary {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
   color: #2b075f;
 }
 
