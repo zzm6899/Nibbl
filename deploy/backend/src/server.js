@@ -442,7 +442,6 @@ async function bootstrap() {
       expires_at timestamptz
     );
     create index if not exists day_shares_date_idx on day_shares(log_date);
-    create index if not exists day_shares_expires_at_idx on day_shares(expires_at);
     create table if not exists waitlist_signups (
       email text primary key,
       source text not null default 'landing',
@@ -458,6 +457,7 @@ async function bootstrap() {
   await pool.query("alter table devices add column if not exists avatar_key text");
   await pool.query("alter table day_shares add column if not exists expires_at timestamptz");
   await pool.query("update day_shares set expires_at = created_at + ($1::text || ' days')::interval where expires_at is null", [shareExpiryDays]);
+  await pool.query("create index if not exists day_shares_expires_at_idx on day_shares(expires_at)");
   await ensureObjectStorage();
 }
 
