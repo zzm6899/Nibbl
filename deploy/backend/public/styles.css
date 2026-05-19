@@ -310,6 +310,64 @@ a.button.secondary, button.secondary {
   box-shadow: inset 0 0 0 2px #eaded6;
 }
 
+.waitlist-form {
+  width: min(640px, 100%);
+  display: grid;
+  gap: 8px;
+}
+
+.waitlist-form label {
+  color: #2b075f;
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.waitlist-form > div {
+  display: flex;
+  gap: 10px;
+}
+
+.waitlist-form input {
+  min-width: 0;
+  flex: 1 1 260px;
+  border: 2px solid #eaded6;
+  border-radius: 999px;
+  padding: 14px 16px;
+  background: rgba(255,253,248,.92);
+  color: #332d28;
+  font: inherit;
+  font-weight: 760;
+  outline: 0;
+  box-shadow: 0 12px 28px rgba(122,87,65,.09);
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+
+.waitlist-form input:focus {
+  border-color: #e87979;
+  box-shadow: 0 0 0 4px rgba(232,121,121,.15), 0 12px 28px rgba(122,87,65,.09);
+}
+
+.waitlist-form p {
+  min-height: 22px;
+  font-size: 14px;
+  font-weight: 820;
+  color: #4f7144;
+}
+
+.waitlist-form.is-complete input {
+  border-color: #9fcf8f;
+}
+
+.waitlist-form.compact {
+  width: min(520px, 100%);
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.waitlist-form.compact p {
+  grid-column: 1 / -1;
+}
+
 .invite-card {
   width: min(640px, 100%);
   display: grid;
@@ -361,6 +419,10 @@ a.button.secondary, button.secondary {
 
 .install-strip p {
   font-size: 17px;
+}
+
+.waitlist-strip {
+  background: #d8eff1;
 }
 
 .phone-card {
@@ -547,6 +609,183 @@ a.button.secondary, button.secondary {
   border-color: #f4b14e;
   color: #2b075f;
   animation: todayPulse 1.8s ease-in-out infinite;
+}
+
+.workflow-section {
+  display: grid;
+  grid-template-columns: minmax(0, .74fr) minmax(340px, 1fr);
+  gap: 24px;
+  align-items: center;
+  margin-top: 18px;
+  padding: 24px 0;
+}
+
+.workflow-copy {
+  display: grid;
+  gap: 14px;
+}
+
+.workflow-copy p:not(.eyebrow) {
+  font-size: 18px;
+}
+
+.workflow-demo {
+  position: relative;
+  min-height: 360px;
+  overflow: hidden;
+  border-radius: 28px;
+  background:
+    linear-gradient(135deg, rgba(255,253,248,.95), rgba(234,244,216,.82)),
+    #fffdf8;
+  box-shadow: 0 24px 60px rgba(122,87,65,.14);
+  border: 2px solid rgba(255,255,255,.72);
+}
+
+.upload-scene,
+.cutout-scene,
+.calendar-scene {
+  position: absolute;
+  inset: 28px;
+  display: grid;
+  place-items: center;
+}
+
+.upload-card {
+  width: min(250px, 72%);
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  padding: 22px;
+  border-radius: 22px;
+  background: #fffdf8;
+  color: #2b075f;
+  box-shadow: 0 18px 40px rgba(122,87,65,.13);
+  animation: uploadCard 6.8s ease-in-out infinite;
+}
+
+.upload-card strong {
+  font-size: 20px;
+}
+
+.upload-card small,
+.calendar-head span {
+  color: #7a685f;
+  font-weight: 800;
+}
+
+.upload-icon {
+  width: 82px;
+  height: 82px;
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 52% 40%, #e87979 0 18%, transparent 19%),
+    linear-gradient(145deg, #d8eff1 0 48%, #fff0b8 49% 100%);
+  box-shadow: inset 0 0 0 6px rgba(255,255,255,.72);
+}
+
+.upload-progress {
+  width: min(270px, 76%);
+  height: 10px;
+  align-self: end;
+  margin-bottom: 18px;
+  border-radius: 999px;
+  background: #eaded6;
+  overflow: hidden;
+  animation: uploadProgressShell 6.8s ease-in-out infinite;
+}
+
+.upload-progress span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: #2b075f;
+  transform-origin: left;
+  animation: uploadProgress 6.8s ease-in-out infinite;
+}
+
+.cutout-original,
+.cutout-mask,
+.cutout-food {
+  position: absolute;
+  display: block;
+}
+
+.cutout-original {
+  width: 210px;
+  height: 210px;
+  border-radius: 30px;
+  background:
+    linear-gradient(135deg, rgba(63,95,53,.12) 25%, transparent 25% 50%, rgba(63,95,53,.12) 50% 75%, transparent 75%),
+    #eaf4d8;
+  background-size: 32px 32px;
+  box-shadow: 0 18px 42px rgba(122,87,65,.14);
+  animation: originalPhoto 6.8s ease-in-out infinite;
+}
+
+.cutout-mask {
+  width: 230px;
+  height: 58px;
+  border-radius: 999px;
+  background: rgba(255,253,248,.72);
+  box-shadow: 0 0 0 999px rgba(255,253,248,.38);
+  animation: cutoutSweep 6.8s ease-in-out infinite;
+}
+
+.cutout-food {
+  width: 128px;
+  height: 128px;
+  border-radius: 34px 34px 46px 46px;
+  background:
+    radial-gradient(circle at 50% 26%, #fffdf8 0 20%, transparent 21%),
+    linear-gradient(#9fcf8f 0 48%, #6f9a63 49% 100%);
+  box-shadow: 0 20px 38px rgba(122,87,65,.16);
+  animation: foodCutout 6.8s ease-in-out infinite;
+}
+
+.calendar-scene {
+  place-items: end center;
+  animation: calendarScene 6.8s ease-in-out infinite;
+}
+
+.calendar-head {
+  width: min(320px, 86%);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  color: #2b075f;
+}
+
+.calendar-drop-grid {
+  width: min(320px, 86%);
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.calendar-drop-grid i,
+.calendar-drop-grid b {
+  aspect-ratio: 1;
+  border-radius: 13px;
+  background: #fffdf8;
+  border: 2px solid #eaded6;
+}
+
+.calendar-drop-grid b {
+  position: relative;
+  background: #ffe8b8;
+  border-color: #f4b14e;
+}
+
+.calendar-drop-grid b::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border-radius: 12px 12px 16px 16px;
+  background: linear-gradient(#9fcf8f 0 50%, #6f9a63 51%);
+  box-shadow: 0 8px 16px rgba(122,87,65,.12);
+  animation: calendarSnack 6.8s ease-in-out infinite;
 }
 
 .stats, .share-grid, .feature-grid {
@@ -898,6 +1137,51 @@ tbody tr:hover {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+@keyframes uploadCard {
+  0%, 12% { opacity: 0; transform: translateY(22px) scale(.94); }
+  18%, 38% { opacity: 1; transform: translateY(0) scale(1); }
+  48%, 100% { opacity: 0; transform: translateY(-24px) scale(.96); }
+}
+
+@keyframes uploadProgressShell {
+  0%, 12%, 48%, 100% { opacity: 0; }
+  18%, 40% { opacity: 1; }
+}
+
+@keyframes uploadProgress {
+  0%, 18% { transform: scaleX(.08); }
+  38%, 100% { transform: scaleX(1); }
+}
+
+@keyframes originalPhoto {
+  0%, 36% { opacity: 0; transform: scale(.92) rotate(-4deg); }
+  45%, 62% { opacity: 1; transform: scale(1) rotate(-2deg); }
+  72%, 100% { opacity: 0; transform: scale(.96) rotate(3deg); }
+}
+
+@keyframes cutoutSweep {
+  0%, 44% { opacity: 0; transform: translateY(-80px); }
+  50%, 56% { opacity: .86; }
+  66%, 100% { opacity: 0; transform: translateY(92px); }
+}
+
+@keyframes foodCutout {
+  0%, 54% { opacity: 0; transform: translateY(10px) scale(.76) rotate(-8deg); }
+  64%, 76% { opacity: 1; transform: translateY(0) scale(1) rotate(2deg); }
+  88%, 100% { opacity: 0; transform: translateY(100px) scale(.54) rotate(0); }
+}
+
+@keyframes calendarScene {
+  0%, 70% { opacity: 0; transform: translateY(24px); }
+  78%, 100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes calendarSnack {
+  0%, 78% { opacity: 0; transform: translateY(-110px) scale(1.42); }
+  88% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 footer {
   display: flex;
   justify-content: space-between;
@@ -910,6 +1194,29 @@ footer {
 footer a {
   color: #2b075f;
   font-weight: 850;
+}
+
+.policy-page {
+  max-width: 940px;
+}
+
+.policy-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.policy-panel h2 {
+  margin-top: 10px;
+  font-size: 28px;
+}
+
+.policy-panel h2:first-child {
+  margin-top: 0;
+}
+
+.policy-panel p {
+  max-width: none;
+  font-size: 17px;
 }
 
 @media (max-width: 860px) {
@@ -953,6 +1260,16 @@ footer a {
 
   .stats, .share-grid, .admin-grid, .feature-grid, .admin-health {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workflow-section {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 18px 0;
+  }
+
+  .workflow-demo {
+    min-height: 320px;
   }
 
   .admin-lists {
@@ -1030,6 +1347,17 @@ footer a {
     padding: 13px 16px;
   }
 
+  .waitlist-form > div,
+  .waitlist-form.compact {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .waitlist-form input {
+    width: 100%;
+    flex-basis: auto;
+  }
+
   .invite-card,
   .stat,
   .card,
@@ -1045,6 +1373,17 @@ footer a {
 
   .phone-card {
     display: none;
+  }
+
+  .workflow-demo {
+    min-height: 300px;
+    border-radius: 20px;
+  }
+
+  .upload-scene,
+  .cutout-scene,
+  .calendar-scene {
+    inset: 18px;
   }
 
   .install-strip {

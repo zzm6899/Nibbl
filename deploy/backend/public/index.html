@@ -22,9 +22,17 @@
           <p class="eyebrow">Food + drink diary</p>
           <h1>Nibbl</h1>
           <p>Save cafe photos, cut out the background, tag friends, and keep every food or drink moment on a soft little calendar.</p>
+          <form id="waitlist-form" class="waitlist-form" data-source="hero">
+            <label for="waitlist-email">Join the waitlist</label>
+            <div>
+              <input id="waitlist-email" name="email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required />
+              <button type="submit">Join waitlist</button>
+            </div>
+            <p id="waitlist-message" role="status" aria-live="polite"></p>
+          </form>
           <div class="actions">
             <a id="open-app" class="button" href="intent://nibbl.z2hs.au/#Intent;scheme=https;package=au.z2hs.nibbl;end">Open in Nibbl</a>
-            <a id="install-app" class="button secondary" href="https://play.google.com/store/apps/details?id=au.z2hs.nibbl">Install app</a>
+            <a class="button secondary" href="#how-it-works">See how it works</a>
           </div>
           <div id="invite" class="invite-card" hidden>
             <span id="invite-kicker">Friend profile</span>
@@ -59,7 +67,37 @@
         <div class="stat"><strong id="categories">-</strong><span>food types</span></div>
       </section>
 
-      <section id="how-it-works" class="feature-grid">
+      <section id="how-it-works" class="workflow-section">
+        <div class="workflow-copy">
+          <p class="eyebrow">How it works</p>
+          <h2>Photo in, calendar memory out.</h2>
+          <p>Nibbl turns a quick food photo into a clean diary entry, then places it on the right day with the details you care about.</p>
+        </div>
+        <div class="workflow-demo" aria-label="Animated Nibbl workflow">
+          <div class="upload-scene">
+            <div class="upload-card">
+              <span class="upload-icon"></span>
+              <strong>Uploading photo</strong>
+              <small>latte.jpg</small>
+            </div>
+            <div class="upload-progress"><span></span></div>
+          </div>
+          <div class="cutout-scene">
+            <span class="cutout-original"></span>
+            <span class="cutout-mask"></span>
+            <span class="cutout-food"></span>
+          </div>
+          <div class="calendar-scene">
+            <div class="calendar-head"><strong>Today</strong><span>Saved</span></div>
+            <div class="calendar-drop-grid" aria-hidden="true">
+              <i></i><i></i><i></i><i></i><i></i><i></i>
+              <i></i><b></b><i></i><i></i><i></i><i></i>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" class="feature-grid">
         <article class="panel">
           <span>01</span>
           <h2>Save the photo</h2>
@@ -82,16 +120,21 @@
         <p><strong>Friend links</strong> add a real Nibbl friend tag to the app. <strong>Public day links</strong> open a web page for one calendar day. They are different on purpose.</p>
       </section>
 
-      <section id="install" class="install-strip">
+      <section id="waitlist" class="install-strip waitlist-strip">
         <div>
-          <h2>Want to add your own photos?</h2>
-          <p>Install Nibbl, save food and drink photos, then share your profile or a public day link with friends.</p>
+          <h2>Want early access?</h2>
+          <p>Join the waitlist and we will email you when Nibbl is ready for more testers.</p>
         </div>
-        <a class="button" href="https://play.google.com/store/apps/details?id=au.z2hs.nibbl">Install now</a>
+        <form id="waitlist-form-footer" class="waitlist-form compact" data-source="footer">
+          <input name="email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" required />
+          <button type="submit">Join waitlist</button>
+          <p role="status" aria-live="polite"></p>
+        </form>
       </section>
 
       <footer>
         <span>Nibbl self-hosted at nibbl.z2hs.au</span>
+        <a href="/privacy.html">Privacy</a>
         <a href="/admin.html">Admin</a>
       </footer>
     </main>
@@ -105,9 +148,12 @@
       const openApp = document.getElementById("open-app");
       const copyTag = document.getElementById("copy-tag");
       const currentUrl = window.location.href;
-      const intentUrl = `intent://${window.location.host}${window.location.pathname}${window.location.search}#Intent;scheme=${window.location.protocol.replace(":", "")};package=au.z2hs.nibbl;S.browser_fallback_url=${encodeURIComponent("https://play.google.com/store/apps/details?id=au.z2hs.nibbl")};end`;
+      const intentUrl = `intent://${window.location.host}${window.location.pathname}${window.location.search}#Intent;scheme=${window.location.protocol.replace(":", "")};package=au.z2hs.nibbl;S.browser_fallback_url=${encodeURIComponent(`${window.location.origin}/#waitlist`)};end`;
       openApp.href = intentUrl;
       renderPreviewCalendar();
+      document.querySelectorAll(".waitlist-form").forEach((form) => {
+        form.addEventListener("submit", joinWaitlist);
+      });
       if (params.has("friend") || params.has("crew")) {
         const name = params.get("name") || "this friend";
         const tag = (params.get("friend") || params.get("crew") || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
@@ -166,6 +212,31 @@
         const visibleCells = cells.slice(0, Math.max(21, leading + Math.min(daysInMonth, day + 7)));
         document.getElementById("preview-month").textContent = monthName;
         document.getElementById("preview-calendar").innerHTML = visibleCells.join("");
+      }
+
+      async function joinWaitlist(event) {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const input = form.querySelector("input[name='email']");
+        const message = form.querySelector("[role='status']");
+        const button = form.querySelector("button");
+        const email = input.value.trim();
+        button.disabled = true;
+        message.textContent = "Joining...";
+        try {
+          const response = await fetch("/api/nibbl/waitlist", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, source: form.dataset.source || "landing" }),
+          });
+          if (!response.ok) throw new Error("waitlist_failed");
+          message.textContent = "You are on the waitlist.";
+          form.classList.add("is-complete");
+        } catch {
+          message.textContent = "That did not go through. Check the email and try again.";
+        } finally {
+          button.disabled = false;
+        }
       }
     </script>
   </body>

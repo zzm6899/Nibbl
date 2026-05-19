@@ -32,6 +32,7 @@
         <div class="stat"><strong id="shares">-</strong><span>day shares</span></div>
         <div class="stat"><strong id="sharesWeek">-</strong><span>shares this week</span></div>
         <div class="stat"><strong id="shareVisits">-</strong><span>share visits</span></div>
+        <div class="stat"><strong id="waitlistSignups">-</strong><span>waitlist signups</span></div>
         <div class="stat"><strong id="imageEntries">-</strong><span>image logs</span></div>
         <div class="stat"><strong id="avatarDevices">-</strong><span>profile photos</span></div>
         <div class="stat"><strong id="cafes">-</strong><span>cafes</span></div>
@@ -47,6 +48,7 @@
         <div class="panel"><strong>Top friends</strong><div id="topFriends" class="rank-list"></div></div>
         <div class="panel"><strong>Sources</strong><div id="sourceBreakdown" class="rank-list"></div></div>
         <div class="panel"><strong>Recent share links</strong><div id="recentShares" class="rank-list share-links"></div></div>
+        <div class="panel"><strong>Waitlist</strong><div id="recentWaitlist" class="rank-list"></div></div>
       </section>
 
       <section class="panel admin-table-panel" style="margin-top: 14px">
@@ -74,6 +76,7 @@
         setText("shares", stats.shares ?? 0);
         setText("sharesWeek", stats.sharesWeek ?? 0);
         setText("shareVisits", stats.shareVisits ?? 0);
+        setText("waitlistSignups", stats.waitlistSignups ?? 0);
         setText("imageEntries", stats.imageEntries ?? 0);
         setText("avatarDevices", stats.avatarDevices ?? 0);
         setText("cafes", stats.cafes ?? 0);
@@ -89,6 +92,7 @@
         renderRankList("topCafes", stats.topCafes || []);
         renderRankList("topFriends", stats.topFriends || []);
         renderRankList("sourceBreakdown", stats.sourceBreakdown || []);
+        renderWaitlist(stats.recentWaitlist || []);
         renderShares(stats.recentShares || []);
         document.getElementById("logs").innerHTML = (Array.isArray(logs) ? logs : []).map((log) => `
           <tr>
@@ -128,6 +132,12 @@
             <strong>Open</strong>
           </a>
         `).join("") : `<div class="empty-row">No shares yet</div>`;
+      }
+
+      function renderWaitlist(rows) {
+        document.getElementById("recentWaitlist").innerHTML = rows.length ? rows.map((row) => `
+          <div class="rank-row"><span>${escapeHtml(row.label || "Unknown")}</span><strong>${escapeHtml(formatSydneyTime(row.createdAt))}</strong></div>
+        `).join("") : `<div class="empty-row">No signups yet</div>`;
       }
 
       function publicOwner(row) {

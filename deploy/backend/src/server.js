@@ -60,6 +60,25 @@ app.get("/api/health", (_req, res) => res.json({
   objectError: process.env.NIBBL_HEALTH_DETAILS === "true" && !objectReady ? lastObjectError || undefined : undefined,
 }));
 
+app.post("/api/nibbl/waitlist", async (req, res, next) => {
+  try {
+    const email = emailAddress(req.body.email);
+    if (!email) return res.status(400).json({ error: "valid_email_required" });
+    const source = text(req.body.source || "landing", 40) || "landing";
+    await pool.query(
+      `insert into waitlist_signups (email, source)
+       values ($1,$2)
+       on conflict (email) do update set
+        source = excluded.source,
+        updated_at = now()`,
+      [email, source],
+    );
+    res.status(201).json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/nibbl/devices/register", async (req, res, next) => {
   try {
     const requestedOwnerId = text(req.body.ownerId, 64);
@@ -399,6 +418,13 @@ async function bootstrap() {
       created_at timestamptz not null default now()
     );
     create index if not exists day_shares_date_idx on day_shares(log_date);
+    create table if not exists waitlist_signups (
+      email text primary key,
+      source text not null default 'landing',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+    create index if not exists waitlist_signups_created_at_idx on waitlist_signups(created_at desc);
   `);
   await pool.query("alter table logs add column if not exists client_log_id text not null default ''");
   await pool.query("create unique index if not exists logs_owner_client_log_idx on logs(owner_id, client_log_id) where client_log_id <> ''");
@@ -453,6 +479,7 @@ async function readStats(includeRecent = false) {
     { rows: imageLogs },
     { rows: avatarDevices },
     { rows: recentUploads },
+    { rows: waitlist },
   ] = await Promise.all([
     pool.query(`
       select
@@ -490,6 +517,7 @@ async function readStats(includeRecent = false) {
     pool.query("select count(*)::int as image_logs from logs where image_key is not null"),
     pool.query("select count(*)::int as avatar_devices from devices where avatar_key is not null"),
     pool.query("select max(created_at) as last_upload_at from logs"),
+    pool.query("select count(*)::int as waitlist_signups from waitlist_signups"),
   ]);
   const countRow = counts[0] || {};
   const stats = {
@@ -509,6 +537,7 @@ async function readStats(includeRecent = false) {
     sharesWeek: shares[0]?.shares_week || 0,
     shareVisits: visits[0]?.share_visits || 0,
     avatarDevices: avatarDevices[0]?.avatar_devices || 0,
+    waitlistSignups: waitlist[0]?.waitlist_signups || 0,
     lastUploadAt: recentUploads[0]?.last_upload_at || null,
     health: {
       database: dbReady ? "ready" : "waiting",
@@ -525,6 +554,7 @@ async function readStats(includeRecent = false) {
       { rows: topFriends },
       { rows: sourceBreakdown },
       { rows: recentShares },
+      { rows: recentWaitlist },
     ] = await Promise.all([
       pool.query("select log_date, count(*)::int as total from logs group by log_date order by log_date desc limit 14"),
       pool.query(`
@@ -562,6 +592,12 @@ async function readStats(includeRecent = false) {
         order by created_at desc
         limit 8
       `),
+      pool.query(`
+        select email as label, source, created_at
+        from waitlist_signups
+        order by created_at desc
+        limit 8
+      `),
     ]);
     stats.recentDays = recentDays.map((row) => ({ date: normalizeDateValue(row.log_date), total: row.total }));
     stats.topCategories = topCategories;
@@ -575,6 +611,11 @@ async function readStats(includeRecent = false) {
       date: normalizeDateValue(row.log_date),
       createdAt: row.created_at,
       url: `/?s=${encodeURIComponent(row.token)}`,
+    }));
+    stats.recentWaitlist = recentWaitlist.map((row) => ({
+      label: row.label,
+      source: row.source,
+      createdAt: row.created_at,
     }));
   }
   return stats;
@@ -712,7 +753,7 @@ function renderSharePage(day, date, share = null) {
     </article>
   `).join("");
   const owner = share?.owner_name || share?.owner_tag || "";
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nibbl ${escapeHtml(date)}</title><link rel="stylesheet" href="/styles.css"></head><body><main><section class="hero compact share-hero"><div class="mark logo-mark"><span class="cup-face"></span></div><p class="eyebrow">Shared diary day</p><h1>${escapeHtml(date)}</h1><p>${owner ? `${escapeHtml(owner)} shared this day. ` : ""}${day.logs.length ? `${day.logs.length} saved food and drink moments.` : "No public logs have synced for this day yet."}</p><div class="actions"><a class="button" href="intent://nibbl.z2hs.au/#Intent;scheme=https;package=au.z2hs.nibbl;S.browser_fallback_url=${encodeURIComponent("https://play.google.com/store/apps/details?id=au.z2hs.nibbl")};end">Open in Nibbl</a><a class="button secondary" href="https://play.google.com/store/apps/details?id=au.z2hs.nibbl">Install app</a></div></section><section class="share-grid">${cards}</section><section id="install" class="install-strip"><div><h2>Want to add your own photos?</h2><p>Install Nibbl to save food and drink photos, then share your profile or day links with friends.</p></div><a class="button" href="https://play.google.com/store/apps/details?id=au.z2hs.nibbl">Install now</a></section></main></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nibbl ${escapeHtml(date)}</title><link rel="stylesheet" href="/styles.css"></head><body><main><section class="hero compact share-hero"><div class="mark logo-mark"><span class="cup-face"></span></div><p class="eyebrow">Shared diary day</p><h1>${escapeHtml(date)}</h1><p>${owner ? `${escapeHtml(owner)} shared this day. ` : ""}${day.logs.length ? `${day.logs.length} saved food and drink moments.` : "No public logs have synced for this day yet."}</p><div class="actions"><a class="button" href="intent://nibbl.z2hs.au/#Intent;scheme=https;package=au.z2hs.nibbl;S.browser_fallback_url=${encodeURIComponent("https://nibbl.z2hs.au/#waitlist")};end">Open in Nibbl</a><a class="button secondary" href="/#waitlist">Join waitlist</a></div></section><section class="share-grid">${cards}</section><section id="waitlist" class="install-strip waitlist-strip"><div><h2>Want early access?</h2><p>Join the Nibbl waitlist to save food and drink photos when more testing spots open.</p></div><a class="button" href="/#waitlist">Join waitlist</a></section><footer><span>Nibbl self-hosted at nibbl.z2hs.au</span><a href="/privacy.html">Privacy</a></footer></main></body></html>`;
 }
 
 async function requireDeviceAuth(req, res, next) {
@@ -814,6 +855,11 @@ function nullableFloat(value) {
 
 function text(value, max) {
   return String(value ?? "").trim().slice(0, max);
+}
+
+function emailAddress(value) {
+  const email = text(value, 254).toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) ? email : "";
 }
 
 function friendTag(value) {
