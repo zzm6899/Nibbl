@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -198,6 +199,8 @@ private data class QuickEntryPreset(
     val calories: String,
     val reaction: String,
 )
+
+private enum class ShareKind { Day, Friend, Link }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -526,6 +529,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUris: List<Uri> = e
                             date = selectedDate,
                             mode = mode,
                             displayName = settings.displayName,
+                            weekStartsOnMonday = settings.weekStartsOnMonday,
                             onPrevious = { selectedDate = selectedDate.shift(mode, -1) },
                             onNext = { selectedDate = selectedDate.shift(mode, 1) },
                         )
@@ -711,8 +715,8 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUris: List<Uri> = e
                             refresh()
                             billingMessage = "Restored $count cloud logs."
                         },
-                        onExportRecap = {
-                            shareRecap(context, selectedDate, mode, logs, repository)
+                        onExportSummary = {
+                            shareSummary(context, selectedDate, mode, logs, repository, settings.weekStartsOnMonday)
                         },
                         onExportBackup = {
                             shareLocalBackup(context, logs, settings)
@@ -956,7 +960,14 @@ private fun CuteMotionBackground() {
 }
 
 @Composable
-private fun Header(date: LocalDate, mode: CalendarMode, displayName: String, onPrevious: () -> Unit, onNext: () -> Unit) {
+private fun Header(
+    date: LocalDate,
+    mode: CalendarMode,
+    displayName: String,
+    weekStartsOnMonday: Boolean,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+) {
     val ownerName = displayName.trim().ifBlank { AppSettings.DEFAULT_DISPLAY_NAME }
     val transition = rememberInfiniteTransition(label = "header")
     val badgeFloat by transition.animateFloat(
@@ -990,7 +1001,7 @@ private fun Header(date: LocalDate, mode: CalendarMode, displayName: String, onP
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(date.headerLabel(mode), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(date.headerLabel(mode, weekStartsOnMonday), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     "${ownerName}'s diary",
                     style = MaterialTheme.typography.bodySmall,
@@ -1288,7 +1299,7 @@ private fun SettingsScreen(
     onRestorePurchases: () -> Unit,
     onBackupNow: suspend () -> Unit,
     onRestoreCloud: suspend () -> Unit,
-    onExportRecap: () -> Unit,
+    onExportSummary: () -> Unit,
     onExportBackup: () -> Unit,
 ) {
     var displayName by remember(settings.displayName) { mutableStateOf(settings.displayName) }
@@ -1411,7 +1422,7 @@ private fun SettingsScreen(
             Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Daily caffeine budget", fontWeight = FontWeight.Black)
-                    Text("Nibbl compares day/week recaps against this soft target.", color = MaterialTheme.colorScheme.secondary)
+                    Text("Nibbl compares day/week summaries against this soft target.", color = MaterialTheme.colorScheme.secondary)
                     OutlinedTextField(
                         value = caffeineBudget,
                         onValueChange = { caffeineBudget = it.filter(Char::isDigit).take(4) },
@@ -1469,7 +1480,7 @@ private fun SettingsScreen(
                         }
                     }
                 },
-                onExportRecap = onExportRecap,
+                onExportSummary = onExportSummary,
             )
         }
         item {
@@ -1559,10 +1570,10 @@ private fun PremiumFeaturePanel(
     onSettings: (AppSettings) -> Unit,
     onBackupNow: () -> Unit,
     onRestoreCloud: () -> Unit,
-    onExportRecap: () -> Unit,
+    onExportSummary: () -> Unit,
 ) {
     val unlocked = settings.plusUnlocked || settings.proActive
-    val scopedLogs = scopedLogsFor(selectedDate, selectedMode, logs, repository)
+    val scopedLogs = scopedLogsFor(selectedDate, selectedMode, logs, repository, settings.weekStartsOnMonday)
     Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1570,7 +1581,7 @@ private fun PremiumFeaturePanel(
                 Column(Modifier.weight(1f)) {
                     Text("Plus + Pro features", fontWeight = FontWeight.Black)
                     Text(
-                        if (unlocked) "Themes, stickers, recap cards, filters, backup, restore, and exports are active."
+                        if (unlocked) "Themes, stickers, summary images, filters, backup, restore, and exports are active."
                         else "Preview the tools included after upgrade.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.secondary,
@@ -1599,10 +1610,11 @@ private fun PremiumFeaturePanel(
                     )
                 }
             }
-            RecapPreviewCard(selectedDate, selectedMode, scopedLogs)
+            PaidFeatureChips(unlocked = unlocked, proActive = settings.proActive)
+            SummaryImagePreviewCard(selectedDate, selectedMode, scopedLogs, settings.weekStartsOnMonday)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(onClick = onExportRecap, enabled = unlocked, modifier = Modifier.weight(1f)) {
-                    Text("Export recap")
+                Button(onClick = onExportSummary, enabled = unlocked, modifier = Modifier.weight(1f)) {
+                    Text("Share summary image")
                 }
                 Button(onClick = onBackupNow, enabled = unlocked && !cloudWorking, modifier = Modifier.weight(1f)) {
                     Text(if (cloudWorking) "Syncing" else "Cloud backup")
@@ -1617,7 +1629,7 @@ private fun PremiumFeaturePanel(
                 Text(if (cloudWorking) "Restoring" else "Restore from cloud")
             }
             Text(
-                "Shared albums use public day links. Pro restore pulls your synced logs and images back onto this device.",
+                "Plus is for personal polish. Pro is for server-backed sync, restore, and friend albums across devices.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.secondary,
             )
@@ -1626,17 +1638,85 @@ private fun PremiumFeaturePanel(
 }
 
 @Composable
-private fun RecapPreviewCard(date: LocalDate, mode: CalendarMode, logs: List<FoodLog>) {
+@OptIn(ExperimentalLayoutApi::class)
+private fun PaidFeatureChips(unlocked: Boolean, proActive: Boolean) {
+    val chips = buildList {
+        add("Themes")
+        add("Stickers")
+        add("Advanced filters")
+        add("Share images")
+        add("Unlimited types")
+        add(if (proActive) "Cloud active" else "Cloud backup")
+        add("Friend albums")
+    }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        chips.forEachIndexed { index, label ->
+            Surface(
+                shape = RoundedCornerShape(999.dp),
+                color = when {
+                    unlocked && index % 2 == 0 -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.75f)
+                    unlocked -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.75f)
+                    else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)
+                },
+            ) {
+                Text(
+                    label,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (unlocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SummaryImagePreviewCard(date: LocalDate, mode: CalendarMode, logs: List<FoodLog>, weekStartsOnMonday: Boolean) {
     val title = when (mode) {
         CalendarMode.Month -> date.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
-        CalendarMode.Week -> "Week of ${date.weekStart(false).format(DateTimeFormatter.ofPattern("d MMM"))}"
+        CalendarMode.Week -> "Week of ${date.weekStart(weekStartsOnMonday).format(DateTimeFormatter.ofPattern("d MMM"))}"
         CalendarMode.Day -> date.format(DateTimeFormatter.ofPattern("d MMM yyyy"))
     }
-    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f)) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Recap card", fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
+    val topLogs = logs.takeLast(4)
+    Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.75f)) {
+                    Icon(Icons.Rounded.Share, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(8.dp).size(18.dp))
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("Diary summary image", fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
+                    Text("Exports a polished photo summary, not just text.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                }
+            }
             Text(title, fontWeight = FontWeight.Bold)
-            Text(recapTextFor(logs), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+            Row(Modifier.fillMaxWidth().height(78.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                if (topLogs.isEmpty()) {
+                    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f), modifier = Modifier.fillMaxSize()) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("Add logs to fill this preview", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                        }
+                    }
+                } else {
+                    topLogs.forEach { log ->
+                        Image(
+                            painter = rememberAsyncImagePainter(File(log.imagePath)),
+                            contentDescription = log.title,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.68f))
+                                .padding(4.dp),
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
+                }
+            }
+            Text(summaryTextFor(logs), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
         }
     }
 }
@@ -1686,7 +1766,7 @@ private fun MonetizationCard(
             if (billingState.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             BillingPlanRow(
                 title = "Plus",
-                subtitle = "Unlimited logs, custom types, themes, stickers, recap cards",
+                subtitle = "Unlimited logs, custom types, themes, stickers, diary summary images",
                 fallback = "$4.99 once",
                 productId = BillingRepository.NIBBL_PLUS_LIFETIME,
                 billingState = billingState,
@@ -1696,7 +1776,7 @@ private fun MonetizationCard(
             )
             BillingPlanRow(
                 title = "Pro",
-                subtitle = "Cloud backup, restore, shared albums, recap exports",
+                subtitle = "Cloud backup, restore, friend shared albums, monthly/yearly exports",
                 fallback = "$1.99/mo",
                 productId = BillingRepository.NIBBL_PRO_MONTHLY,
                 billingState = billingState,
@@ -1705,7 +1785,7 @@ private fun MonetizationCard(
             )
             BillingPlanRow(
                 title = "Yearly Pro",
-                subtitle = "Best value for sync, backups, and friend albums",
+                subtitle = "Best value for sync, backup, restore, and public shared albums",
                 fallback = "$14.99/year",
                 productId = BillingRepository.NIBBL_PRO_YEARLY,
                 billingState = billingState,
@@ -2131,11 +2211,9 @@ private fun QuickPresetRow(categories: List<DrinkCategory>, onPreset: (QuickEntr
     val presets = listOf(
         QuickEntryPreset("Matcha", "matcha", "80", "120", "cozy"),
         QuickEntryPreset("Coffee", "coffee", "95", "40", "again"),
-        QuickEntryPreset("Tea", "tea", "45", "10", "cozy"),
-        QuickEntryPreset("Boba", "boba", "60", "320", "yum"),
-        QuickEntryPreset("Smoothie", "smoothie", "", "260", "fresh"),
+        QuickEntryPreset("Drink", "drink", "", "120", "cozy"),
+        QuickEntryPreset("Food", "food", "", "520", "yum"),
         QuickEntryPreset("Snack", "snack", "", "180", "yum"),
-        QuickEntryPreset("Meal", "meal", "", "520", "again"),
         QuickEntryPreset("Dessert", "dessert", "", "340", "cute"),
     )
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -2474,6 +2552,8 @@ private fun WeekCalendar(
 @Composable
 private fun WeekDrinkCard(day: LocalDate, logs: List<FoodLog>, isSelected: Boolean, onDate: (LocalDate) -> Unit) {
     val hero = logs.lastOrNull()
+    val totalCalories = logs.sumOf { it.calories ?: 0 }
+    val totalCaffeine = logs.sumOf { it.caffeineMg ?: 0 }
     val transition = rememberInfiniteTransition(label = "week-card")
     val lift by transition.animateFloat(
         initialValue = -2f,
@@ -2495,33 +2575,79 @@ private fun WeekDrinkCard(day: LocalDate, logs: List<FoodLog>, isSelected: Boole
         tonalElevation = 2.dp,
     ) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Surface(shape = RoundedCornerShape(20.dp), color = categoryColor(hero?.category ?: DrinkCategory.Drink)) {
-                Box(Modifier.size(102.dp), contentAlignment = Alignment.Center) {
-                    if (hero != null) {
-                        Image(
-                            painter = rememberAsyncImagePainter(File(hero.imagePath)),
-                            contentDescription = hero.title,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(8.dp),
-                            contentScale = ContentScale.Fit,
-                        )
-                    } else {
-                        Icon(Icons.Rounded.LocalCafe, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(42.dp))
-                    }
-                }
-            }
+            WeekImageStack(logs = logs, modifier = Modifier.size(width = 122.dp, height = 104.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(day.format(DateTimeFormatter.ofPattern("EEE d")), fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium)
                 Text(hero?.title?.ifBlank { hero.category.label } ?: "No food or drinks yet", maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (hero != null) {
                     Text(hero.cafe.ifBlank { "Cafe not set" }, color = MaterialTheme.colorScheme.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        MiniPill("${logs.size} logs")
+                        if (totalCaffeine > 0) MiniPill("${totalCaffeine}mg")
+                        if (totalCalories > 0) MiniPill("$totalCalories cal")
+                        hero.reaction.takeIf { it.isNotBlank() }?.let { MiniPill(it) }
                         hero.friendNames.take(4).forEach { FriendInitial(it, 22.dp) }
-                        if (logs.size > 1) Text("+${logs.size - 1} more", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     }
                 } else {
                     Text("Add a drink, snack, or cafe treat.", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeekImageStack(logs: List<FoodLog>, modifier: Modifier = Modifier) {
+    val ordered = logs.sortedBy { it.timestamp }
+    val hero = ordered.lastOrNull()
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = categoryColor(hero?.category ?: DrinkCategory.Drink),
+        modifier = modifier,
+    ) {
+        if (ordered.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.LocalCafe, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(42.dp))
+            }
+            return@Surface
+        }
+        Box(Modifier.fillMaxSize().padding(6.dp)) {
+            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                ordered.take(3).forEach { log ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.76f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(
+                            painter = rememberAsyncImagePainter(File(log.imagePath)),
+                            contentDescription = log.title,
+                            modifier = Modifier.fillMaxSize().padding(3.dp),
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
+                }
+            }
+            if (ordered.size > 3) {
+                Surface(
+                    modifier = Modifier.align(Alignment.BottomEnd),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary,
+                ) {
+                    Text(
+                        "+${ordered.size - 3}",
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        fontWeight = FontWeight.Black,
+                    )
                 }
             }
         }
@@ -3086,21 +3212,13 @@ private fun FriendEditDialog(
 @Composable
 private fun ShareLinkDialog(url: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
-    val isDayInvite = url.contains("?s=") || url.contains("&s=") || url.contains("?i=") || url.contains("&i=") || url.contains("/i/")
-    val isFriendInvite = !isDayInvite && (url.contains("friend=") || url.contains("crew="))
+    val kind = shareKindFor(url)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (isFriendInvite) "Share friend link" else "Share public day") },
+        title = { Text(if (kind == ShareKind.Friend) "Share friend invite" else "Share diary link") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    if (isFriendInvite) {
-                        "Send this to someone so they can add this friend to their Nibbl app."
-                    } else {
-                        "This is a public web link for this calendar day. Anyone with the link can view the synced food and drink photos for that day."
-                    },
-                    color = MaterialTheme.colorScheme.secondary,
-                )
+                SharePreviewCard(kind = kind, url = url)
                 Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -3136,7 +3254,7 @@ private fun ShareLinkDialog(url: String, onDismiss: () -> Unit) {
                 }
                 Button(
                     onClick = {
-                        shareInviteLink(context, url)
+                        shareInviteLink(context, url, kind)
                         onDismiss()
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -3152,6 +3270,54 @@ private fun ShareLinkDialog(url: String, onDismiss: () -> Unit) {
             TextButton(onClick = onDismiss) { Text("Done") }
         },
     )
+}
+
+@Composable
+private fun SharePreviewCard(kind: ShareKind, url: String) {
+    val title = when (kind) {
+        ShareKind.Friend -> "Friend invite"
+        ShareKind.Day -> "Shared diary day"
+        ShareKind.Link -> "Nibbl link"
+    }
+    val subtitle = when (kind) {
+        ShareKind.Friend -> "Opens Nibbl with this person ready to add as a friend."
+        ShareKind.Day -> "Opens a public, read-only food and drink diary for that calendar day."
+        ShareKind.Link -> "Copy or send this link anywhere."
+    }
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+        tonalElevation = 1.dp,
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f)) {
+                    Icon(
+                        if (kind == ShareKind.Friend) Icons.Rounded.Group else Icons.Rounded.CalendarMonth,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.padding(9.dp).size(18.dp),
+                    )
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(title, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.secondary)
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                MiniPill("opens in app")
+                MiniPill("copyable")
+                MiniPill(if (kind == ShareKind.Day) "web preview" else "friend tag")
+            }
+            Text(
+                url.removePrefix("https://").removePrefix("http://"),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.secondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
 }
 
 private fun copyInviteLink(context: Context, url: String) {
@@ -3179,57 +3345,65 @@ private fun QrCodePreview(value: String) {
     }
 }
 
-private fun shareRecap(
+private fun shareSummary(
     context: Context,
     date: LocalDate,
     mode: CalendarMode,
     logs: List<FoodLog>,
     repository: FoodLogRepository,
+    weekStartsOnMonday: Boolean,
 ) {
-    val scopedLogs = scopedLogsFor(date, mode, logs, repository)
+    val scopedLogs = scopedLogsFor(date, mode, logs, repository, weekStartsOnMonday)
     val title = when (mode) {
         CalendarMode.Month -> date.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
-        CalendarMode.Week -> "Week of ${date.weekStart(false).format(DateTimeFormatter.ofPattern("d MMM yyyy"))}"
+        CalendarMode.Week -> "Week of ${date.weekStart(weekStartsOnMonday).format(DateTimeFormatter.ofPattern("d MMM yyyy"))}"
         CalendarMode.Day -> date.format(DateTimeFormatter.ofPattern("d MMM yyyy"))
     }
     val text = buildString {
-        appendLine("Nibbl recap: $title")
-        appendLine(recapTextFor(scopedLogs))
+        appendLine("Nibbl diary summary: $title")
+        appendLine(summaryTextFor(scopedLogs))
         scopedLogs.take(8).forEach { log ->
             appendLine("- ${log.title.ifBlank { log.category.label }}${log.cafe.takeIf { cafe -> cafe.isNotBlank() }?.let { " at $it" } ?: ""}")
         }
     }
-    val collageUri = runCatching { createRecapCollage(context, title, scopedLogs) }.getOrNull()
+    val collageUri = runCatching { createSummaryCollage(context, title, scopedLogs) }.getOrNull()
     val sendIntent = Intent(Intent.ACTION_SEND).apply {
         type = if (collageUri != null) "image/png" else "text/plain"
-        putExtra(Intent.EXTRA_SUBJECT, "Nibbl recap: $title")
+        putExtra(Intent.EXTRA_SUBJECT, "Nibbl diary summary: $title")
         putExtra(Intent.EXTRA_TEXT, text)
         collageUri?.let {
             putExtra(Intent.EXTRA_STREAM, it)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }
-    context.startActivity(Intent.createChooser(sendIntent, "Share Nibbl recap"))
+    context.startActivity(Intent.createChooser(sendIntent, "Share Nibbl summary"))
 }
 
-private fun scopedLogsFor(date: LocalDate, mode: CalendarMode, logs: List<FoodLog>, repository: FoodLogRepository): List<FoodLog> =
+private fun scopedLogsFor(
+    date: LocalDate,
+    mode: CalendarMode,
+    logs: List<FoodLog>,
+    repository: FoodLogRepository,
+    weekStartsOnMonday: Boolean = false,
+): List<FoodLog> =
     when (mode) {
         CalendarMode.Month -> logs.filter { it.loggedDate() in YearMonth.from(date).atDay(1)..YearMonth.from(date).atEndOfMonth() }
         CalendarMode.Week -> {
-            val start = date.weekStart(false)
+            val start = date.weekStart(weekStartsOnMonday)
             val end = start.plusDays(6)
             logs.filter { it.loggedDate() in start..end }
         }
         CalendarMode.Day -> repository.logsForDate(logs, date)
     }.sortedBy { it.timestamp }
 
-private fun recapTextFor(logs: List<FoodLog>): String {
+private fun summaryTextFor(logs: List<FoodLog>): String {
     val caffeine = logs.sumOf { it.caffeineMg ?: 0 }
     val calories = logs.sumOf { it.calories ?: 0 }
     val spend = logs.sumOf { it.priceCents ?: 0 }
     val cafes = logs.map { it.cafe.trim() }.filter { it.isNotBlank() }.distinct().size
     val top = logs.groupingBy { it.category.label }.eachCount().maxByOrNull { it.value }?.key ?: "No top type yet"
-    return "${logs.size} logs, $cafes cafes, ${caffeine}mg caffeine, $calories cal, ${spend.toPriceText()}, top type: $top."
+    if (logs.isEmpty()) return "No saved food or drinks yet. Add a few photos and this becomes a pretty share image."
+    return "${logs.size} saved, $cafes cafes, ${caffeine}mg caffeine, $calories cal, ${spend.toPriceText()}, top type: $top."
 }
 
 private fun stickerForPack(pack: String): String =
@@ -3270,44 +3444,112 @@ private fun qrBitmap(value: String, size: Int = 420): Bitmap? = runCatching {
     }
 }.getOrNull()
 
-private fun createRecapCollage(context: Context, title: String, logs: List<FoodLog>): Uri {
+private fun createSummaryCollage(context: Context, title: String, logs: List<FoodLog>): Uri {
     val width = 1080
     val height = 1350
     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    canvas.drawColor(0xFFFFF7F2.toInt())
-    paint.color = 0xFF2B114E.toInt()
-    paint.textSize = 58f
-    paint.isFakeBoldText = true
-    canvas.drawText("Nibbl recap", 70f, 105f, paint)
-    paint.textSize = 36f
-    paint.isFakeBoldText = false
-    canvas.drawText(title.take(42), 70f, 160f, paint)
-    paint.textSize = 31f
-    canvas.drawText(recapTextFor(logs).take(58), 70f, 214f, paint)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { isFilterBitmap = true }
 
-    val cell = 290
-    val gap = 24
-    logs.take(9).forEachIndexed { index, log ->
-        val row = index / 3
-        val col = index % 3
-        val left = 70 + col * (cell + gap)
-        val top = 280 + row * (cell + gap)
-        val source = BitmapFactory.decodeFile(log.imagePath) ?: return@forEachIndexed
-        canvas.drawBitmap(source, null, android.graphics.Rect(left, top, left + cell, top + cell), paint)
-        source.recycle()
-        paint.color = 0xEFFFFFFF.toInt()
-        canvas.drawRoundRect(left.toFloat(), (top + cell - 48).toFloat(), (left + cell).toFloat(), (top + cell).toFloat(), 22f, 22f, paint)
-        paint.color = 0xFF2B114E.toInt()
-        paint.textSize = 24f
-        canvas.drawText(log.title.ifBlank { log.category.label }.take(18), (left + 16).toFloat(), (top + cell - 16).toFloat(), paint)
+    fun roundRect(left: Float, top: Float, right: Float, bottom: Float, radius: Float, color: Int) {
+        paint.color = color
+        paint.style = Paint.Style.FILL
+        canvas.drawRoundRect(left, top, right, bottom, radius, radius, paint)
     }
-    paint.color = 0xFF6A4C93.toInt()
-    paint.textSize = 28f
-    canvas.drawText("Made with Nibbl", 70f, 1288f, paint)
+
+    fun drawLine(text: String, x: Float, y: Float, size: Float, color: Int, bold: Boolean = false) {
+        paint.color = color
+        paint.textSize = size
+        paint.isFakeBoldText = bold
+        paint.textAlign = Paint.Align.LEFT
+        canvas.drawText(text, x, y, paint)
+    }
+
+    fun drawPill(text: String, x: Float, y: Float, color: Int): Float {
+        paint.textSize = 27f
+        paint.isFakeBoldText = true
+        val widthPx = paint.measureText(text) + 46f
+        roundRect(x, y, x + widthPx, y + 46f, 23f, color)
+        drawLine(text, x + 23f, y + 31f, 27f, 0xFF2B114E.toInt(), true)
+        return widthPx
+    }
+
+    fun drawFitBitmap(source: Bitmap, left: Float, top: Float, right: Float, bottom: Float) {
+        val maxWidth = right - left
+        val maxHeight = bottom - top
+        val scale = minOf(maxWidth / source.width.toFloat(), maxHeight / source.height.toFloat())
+        val drawWidth = source.width * scale
+        val drawHeight = source.height * scale
+        val dst = android.graphics.RectF(
+            left + (maxWidth - drawWidth) / 2f,
+            top + (maxHeight - drawHeight) / 2f,
+            left + (maxWidth + drawWidth) / 2f,
+            top + (maxHeight + drawHeight) / 2f,
+        )
+        canvas.drawBitmap(source, null, dst, paint)
+    }
+
+    canvas.drawColor(0xFFFFF6F1.toInt())
+    roundRect(48f, 46f, 1032f, 274f, 40f, 0xFFFFFFFF.toInt())
+    roundRect(72f, 74f, 158f, 160f, 32f, 0xFFFFD7EB.toInt())
+    drawLine("Nibbl", 92f, 130f, 34f, 0xFF2B114E.toInt(), true)
+    drawLine("Diary summary image", 184f, 119f, 54f, 0xFF2B114E.toInt(), true)
+    drawLine(title.take(44), 184f, 168f, 34f, 0xFF6A4C93.toInt())
+    drawLine(summaryTextFor(logs).take(76), 72f, 230f, 27f, 0xFF6A4C93.toInt())
+
+    val statPills = listOf(
+        "${logs.size} saved",
+        "${logs.sumOf { it.calories ?: 0 }} cal",
+        "${logs.sumOf { it.caffeineMg ?: 0 }}mg caffeine",
+        "${logs.map { it.cafe.trim() }.filter { it.isNotBlank() }.distinct().size} cafes",
+    )
+    var pillX = 70f
+    statPills.forEachIndexed { index, label ->
+        val used = drawPill(label, pillX, 306f, if (index % 2 == 0) 0xFFD8EFF1.toInt() else 0xFFFFE2C7.toInt())
+        pillX += used + 16f
+    }
+
+    val tileWidth = 468f
+    val tileHeight = 246f
+    val gap = 24f
+    val visibleLogs = logs.take(6)
+    if (visibleLogs.isEmpty()) {
+        roundRect(70f, 410f, 1010f, 1082f, 44f, 0xFFFFFFFF.toInt())
+        roundRect(372f, 570f, 708f, 906f, 72f, 0xFFFFD7EB.toInt())
+        paint.textAlign = Paint.Align.CENTER
+        paint.textSize = 34f
+        paint.isFakeBoldText = true
+        paint.color = 0xFF2B114E.toInt()
+        canvas.drawText("Add food or drink photos", width / 2f, 996f, paint)
+        paint.textSize = 26f
+        paint.isFakeBoldText = false
+        paint.color = 0xFF6A4C93.toInt()
+        canvas.drawText("Your summary image will fill in here.", width / 2f, 1038f, paint)
+    } else {
+        visibleLogs.forEachIndexed { index, log ->
+            val col = index % 2
+            val row = index / 2
+            val left = 48f + col * (tileWidth + gap)
+            val top = 398f + row * (tileHeight + gap)
+            val right = left + tileWidth
+            val bottom = top + tileHeight
+            roundRect(left, top, right, bottom, 36f, 0xFFFFFFFF.toInt())
+            roundRect(left + 12f, top + 12f, right - 12f, bottom - 12f, 28f, log.category.colorArgb)
+            BitmapFactory.decodeFile(log.imagePath)?.let { source ->
+                drawFitBitmap(source, left + 24f, top + 24f, right - 24f, bottom - 72f)
+                source.recycle()
+            }
+            roundRect(left + 18f, bottom - 66f, right - 18f, bottom - 18f, 24f, 0xEFFFFFFF.toInt())
+            drawLine(log.title.ifBlank { log.category.label }.take(26), left + 38f, bottom - 34f, 25f, 0xFF2B114E.toInt(), true)
+        }
+    }
+
+    if (logs.size > visibleLogs.size) {
+        drawPill("+${logs.size - visibleLogs.size} more saved", 740f, 1212f, 0xFFDCECC7.toInt())
+    }
+    drawLine("Made with Nibbl", 70f, 1288f, 28f, 0xFF6A4C93.toInt(), true)
     val dir = File(context.cacheDir, "share").apply { mkdirs() }
-    val file = File(dir, "nibbl-recap-${System.currentTimeMillis()}.png")
+    val file = File(dir, "nibbl-summary-${System.currentTimeMillis()}.png")
     file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     bitmap.recycle()
     return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
@@ -3350,12 +3592,28 @@ private fun shareLocalBackup(context: Context, logs: List<FoodLog>, settings: Ap
     context.startActivity(Intent.createChooser(intent, "Export Nibbl backup"))
 }
 
-private fun shareInviteLink(context: Context, url: String) {
+private fun shareInviteLink(context: Context, url: String, kind: ShareKind = shareKindFor(url)) {
+    val message = when (kind) {
+        ShareKind.Friend -> "Add me on Nibbl:\n$url"
+        ShareKind.Day -> "Here is my Nibbl food and drink diary for the day:\n$url"
+        ShareKind.Link -> "Open this Nibbl link:\n$url"
+    }
     val sendIntent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, url)
+        putExtra(Intent.EXTRA_SUBJECT, if (kind == ShareKind.Friend) "Nibbl friend invite" else "Nibbl diary share")
+        putExtra(Intent.EXTRA_TEXT, message)
     }
-    context.startActivity(Intent.createChooser(sendIntent, "Share Nibbl invite"))
+    context.startActivity(Intent.createChooser(sendIntent, if (kind == ShareKind.Friend) "Share Nibbl friend invite" else "Share Nibbl diary"))
+}
+
+private fun shareKindFor(url: String): ShareKind {
+    val isDayInvite = url.contains("?s=") || url.contains("&s=") || url.contains("?i=") || url.contains("&i=") || url.contains("/i/")
+    val isFriendInvite = !isDayInvite && (url.contains("friend=") || url.contains("crew="))
+    return when {
+        isFriendInvite -> ShareKind.Friend
+        isDayInvite -> ShareKind.Day
+        else -> ShareKind.Link
+    }
 }
 
 @Suppress("DEPRECATION")
@@ -3419,7 +3677,7 @@ private fun EntryDialog(
                         FilterChip(selected = category == it, onClick = { category = it }, label = { Text(it.label) })
                     }
                 }
-                EntrySectionHeader("3", "Numbers + vibe", "Optional details for better recaps.")
+                EntrySectionHeader("3", "Numbers + vibe", "Optional details for better summaries.")
                 OutlinedTextField(caffeine, { value -> caffeine = value.filter(Char::isDigit).take(4) }, label = { Text("Caffeine mg") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(calories, { value -> calories = value.filter(Char::isDigit).take(5) }, label = { Text("Calories") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(price, { value -> price = value.filter { it.isDigit() || it == '.' }.take(8) }, label = { Text("Price") }, modifier = Modifier.fillMaxWidth())
@@ -3538,12 +3796,16 @@ private fun LocalDate.shift(mode: CalendarMode, amount: Long): LocalDate = when 
     CalendarMode.Day -> plusDays(amount)
 }
 
-private fun LocalDate.headerLabel(mode: CalendarMode): String = when (mode) {
+private fun LocalDate.headerLabel(mode: CalendarMode, weekStartsOnMonday: Boolean = false): String = when (mode) {
     CalendarMode.Month -> format(DateTimeFormatter.ofPattern("MMMM yyyy"))
     CalendarMode.Week -> {
-        val start = weekStart(false)
+        val start = weekStart(weekStartsOnMonday)
         val end = start.plusDays(6)
-        "${start.format(DateTimeFormatter.ofPattern("d MMM"))} - ${end.format(DateTimeFormatter.ofPattern("d MMM yyyy"))}"
+        when {
+            start.year == end.year && start.month == end.month -> "${start.dayOfMonth}-${end.dayOfMonth} ${end.format(DateTimeFormatter.ofPattern("MMM yyyy"))}"
+            start.year == end.year -> "${start.format(DateTimeFormatter.ofPattern("d MMM"))}-${end.format(DateTimeFormatter.ofPattern("d MMM yyyy"))}"
+            else -> "${start.format(DateTimeFormatter.ofPattern("d MMM yyyy"))}-${end.format(DateTimeFormatter.ofPattern("d MMM yyyy"))}"
+        }
     }
     CalendarMode.Day -> format(DateTimeFormatter.ofPattern("EEEE, d MMM yyyy"))
 }

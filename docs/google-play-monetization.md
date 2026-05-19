@@ -26,7 +26,7 @@ Nibbl Plus:
 - Unlimited logs
 - Unlimited custom food + drink categories
 - Extra themes, icons, and stickers
-- Calendar recap cards
+- Diary summary images
 - Advanced filters
 
 Nibbl Pro:
@@ -34,7 +34,7 @@ Nibbl Pro:
 - Friend albums
 - Background-removal credits
 - Higher background-removal limits
-- Monthly/yearly recap exports
+- Monthly/yearly summary exports
 - Cross-device restore
 - Priority future features
 

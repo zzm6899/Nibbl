@@ -49,17 +49,14 @@ class DrinkCategory(
     override fun toString(): String = label
 
     companion object {
+        val Drink = DrinkCategory("drink", "Drink", 0xFFD8EFF1.toInt(), true)
+        val Food = DrinkCategory("food", "Food", 0xFFFFE2C7.toInt(), true)
         val Matcha = DrinkCategory("matcha", "Matcha", 0xFFDCECC7.toInt(), true)
         val Coffee = DrinkCategory("coffee", "Coffee", 0xFFEAD4C2.toInt(), true)
-        val Tea = DrinkCategory("tea", "Tea", 0xFFFFE6B8.toInt(), true)
-        val Drink = DrinkCategory("drink", "Drink", 0xFFD8EFF1.toInt(), true)
         val Snack = DrinkCategory("snack", "Snack", 0xFFFFDFDC.toInt(), true)
-        val Boba = DrinkCategory("boba", "Boba", 0xFFE9D7FF.toInt(), true)
-        val Smoothie = DrinkCategory("smoothie", "Smoothie", 0xFFD8F5E5.toInt(), true)
-        val Meal = DrinkCategory("meal", "Meal", 0xFFFFE2C7.toInt(), true)
         val Dessert = DrinkCategory("dessert", "Dessert", 0xFFFFD7EB.toInt(), true)
 
-        val defaults = listOf(Matcha, Coffee, Tea, Drink, Snack, Boba, Smoothie, Meal, Dessert)
+        val defaults = listOf(Drink, Food, Matcha, Coffee, Snack, Dessert)
 
         fun custom(label: String, colorArgb: Int): DrinkCategory {
             val cleanLabel = label.trim().ifBlank { "Other" }.take(28)
