@@ -1120,15 +1120,6 @@ private fun SettingsScreen(
             Text("Diary defaults, friends, and sharing.", color = MaterialTheme.colorScheme.secondary)
         }
         item {
-            MonetizationCard(
-                settings = settings,
-                billingState = billingState,
-                billingMessage = billingMessage,
-                onBuyProduct = onBuyProduct,
-                onRestorePurchases = onRestorePurchases,
-            )
-        }
-        item {
             Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
@@ -1290,6 +1281,15 @@ private fun SettingsScreen(
                 }
             }
         }
+        item {
+            MonetizationCard(
+                settings = settings,
+                billingState = billingState,
+                billingMessage = billingMessage,
+                onBuyProduct = onBuyProduct,
+                onRestorePurchases = onRestorePurchases,
+            )
+        }
     }
 }
 
@@ -1302,14 +1302,14 @@ private fun MonetizationCard(
     onBuyProduct: (String) -> Unit,
     onRestorePurchases: () -> Unit,
 ) {
-    Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.tertiaryContainer, tonalElevation = 2.dp) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.78f), tonalElevation = 1.dp) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)) {
-                    Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(10.dp))
+                    Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(8.dp))
                 }
                 Column(Modifier.weight(1f)) {
-                    Text("Nibbl Plus + Pro", fontWeight = FontWeight.Black)
+                    Text("Upgrade Nibbl", fontWeight = FontWeight.Black)
                     Text(
                         when {
                             settings.proActive -> "Pro is active."
@@ -1321,68 +1321,71 @@ private fun MonetizationCard(
                     )
                 }
             }
-            MonetizationTierSummary(settings)
             if (billingState.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            BillingPlanRow(
+                title = "Plus",
+                subtitle = "Unlimited logs, categories, themes, stickers",
+                fallback = "$4.99 once",
+                productId = BillingRepository.NIBBL_PLUS_LIFETIME,
+                billingState = billingState,
+                onBuyProduct = onBuyProduct,
+            )
+            BillingPlanRow(
+                title = "Pro",
+                subtitle = "Cloud backup, shared albums, recap exports",
+                fallback = "$1.99/mo",
+                productId = BillingRepository.NIBBL_PRO_MONTHLY,
+                billingState = billingState,
+                onBuyProduct = onBuyProduct,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 BillingProductButton(
-                    title = "Nibbl Plus",
-                    fallback = "One-time unlock",
-                    productId = BillingRepository.NIBBL_PLUS_LIFETIME,
-                    billingState = billingState,
-                    onBuyProduct = onBuyProduct,
-                )
-                BillingProductButton(
-                    title = "Pro Monthly",
-                    fallback = "Cloud sync",
-                    productId = BillingRepository.NIBBL_PRO_MONTHLY,
-                    billingState = billingState,
-                    onBuyProduct = onBuyProduct,
-                )
-                BillingProductButton(
-                    title = "Pro Yearly",
-                    fallback = "Best value",
+                    title = "Yearly Pro",
+                    fallback = "$14.99/year",
                     productId = BillingRepository.NIBBL_PRO_YEARLY,
                     billingState = billingState,
                     onBuyProduct = onBuyProduct,
+                    modifier = Modifier.weight(1f),
                 )
+                TextButton(onClick = onRestorePurchases, modifier = Modifier.weight(1f)) {
+                    Text("Restore")
+                }
             }
-            Text(
-                billingMessage ?: billingState.message ?: "Create products in Google Play Console using the IDs shown by the buttons.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.secondary,
-            )
-            TextButton(onClick = onRestorePurchases) {
-                Icon(Icons.Rounded.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Restore purchases")
+            val message = billingMessage ?: billingState.message
+            if (message != null) {
+                Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
             }
         }
     }
 }
 
 @Composable
-private fun MonetizationTierSummary(settings: AppSettings) {
-    val monthKey = YearMonth.now().toString()
-    val used = if (settings.backgroundRemovalMonth == monthKey) settings.backgroundRemovalsThisMonth else 0
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Free", fontWeight = FontWeight.Black)
-        Text(
-            "$used/$FREE_BACKGROUND_REMOVALS_PER_MONTH background removals this month, basic diary, photo logs, profile links, public day sharing, and $FREE_CUSTOM_CATEGORY_LIMIT custom food + drink types.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.secondary,
-        )
-        Text("Plus: US$4.99 one-time", fontWeight = FontWeight.Black)
-        Text(
-            "Unlimited logs, unlimited custom categories, extra themes/icons/stickers, recap cards, and advanced filters.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.secondary,
-        )
-        Text("Pro: US$1.99/month or US$14.99/year", fontWeight = FontWeight.Black)
-        Text(
-            "Cloud sync/backup, cross-device restore, friend shared albums, recap exports, higher background-removal limits, and priority future features.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.secondary,
-        )
+private fun BillingPlanRow(
+    title: String,
+    subtitle: String,
+    fallback: String,
+    productId: String,
+    billingState: BillingUiState,
+    onBuyProduct: (String) -> Unit,
+) {
+    val product = billingState.products.firstOrNull { it.productId == productId }
+    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, fontWeight = FontWeight.Black)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            Button(
+                onClick = { onBuyProduct(productId) },
+                enabled = billingState.available && !billingState.loading,
+            ) {
+                Text(product?.price ?: fallback)
+            }
+        }
     }
 }
 
@@ -1393,16 +1396,17 @@ private fun BillingProductButton(
     productId: String,
     billingState: BillingUiState,
     onBuyProduct: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val product = billingState.products.firstOrNull { it.productId == productId }
     AssistChip(
+        modifier = modifier,
         onClick = { onBuyProduct(productId) },
         enabled = billingState.available && !billingState.loading,
         label = {
             Column {
                 Text(title, fontWeight = FontWeight.Bold)
                 Text(product?.price ?: fallback, style = MaterialTheme.typography.labelSmall)
-                Text(productId, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
             }
         },
     )
