@@ -124,8 +124,8 @@ app.post("/api/nibbl/ingest", requireDeviceAuth, upload.fields([
     const result = await pool.query(
       `insert into logs (
         owner_id, client_log_id, owner_name, owner_tag, timestamp_ms, log_date, title, category, caffeine_mg,
-        cafe, location_name, latitude, longitude, friend_names, image_key, original_image_key, source
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17)
+        cafe, location_name, latitude, longitude, friend_names, sticker, image_key, original_image_key, source
+      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18)
       on conflict (owner_id, client_log_id) where client_log_id <> ''
       do update set
         owner_name = excluded.owner_name,
@@ -140,6 +140,7 @@ app.post("/api/nibbl/ingest", requireDeviceAuth, upload.fields([
         latitude = excluded.latitude,
         longitude = excluded.longitude,
         friend_names = excluded.friend_names,
+        sticker = excluded.sticker,
         image_key = coalesce(excluded.image_key, logs.image_key),
         original_image_key = coalesce(excluded.original_image_key, logs.original_image_key),
         updated_at = now()
@@ -159,6 +160,7 @@ app.post("/api/nibbl/ingest", requireDeviceAuth, upload.fields([
         nullableFloat(body.latitude),
         nullableFloat(body.longitude),
         JSON.stringify(friendNames),
+        text(body.sticker, 16),
         imageObject?.key || null,
         originalObject?.key || null,
         "android",
@@ -281,11 +283,25 @@ app.get("/api/admin/logs", requireAdmin, async (req, res, next) => {
     const limit = Math.min(Number(req.query.limit || 80), 250);
     const { rows } = await pool.query(
       `select id, owner_name, owner_tag, timestamp_ms, log_date, title, category, caffeine_mg,
-        cafe, location_name, friend_names, image_key, created_at
+        cafe, location_name, friend_names, sticker, image_key, original_image_key, created_at
        from logs order by created_at desc limit $1`,
       [limit],
     );
     res.json(rows.map(rowToLog));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/nibbl/logs", requireDeviceAuth, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `select id, owner_name, owner_tag, timestamp_ms, log_date, title, category, caffeine_mg,
+        cafe, location_name, friend_names, sticker, image_key, original_image_key, created_at
+       from logs where owner_id = $1 order by timestamp_ms asc`,
+      [req.device.owner_id],
+    );
+    res.json({ logs: rows.map(rowToLog) });
   } catch (error) {
     next(error);
   }
@@ -389,8 +405,9 @@ async function bootstrap() {
       latitude double precision,
       longitude double precision,
       friend_names jsonb not null default '[]'::jsonb,
-      image_key text,
-      original_image_key text,
+    image_key text,
+    original_image_key text,
+      sticker text not null default '',
       source text not null default 'android',
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
@@ -432,6 +449,7 @@ async function bootstrap() {
     create index if not exists waitlist_signups_created_at_idx on waitlist_signups(created_at desc);
   `);
   await pool.query("alter table logs add column if not exists client_log_id text not null default ''");
+  await pool.query("alter table logs add column if not exists sticker text not null default ''");
   await pool.query("create unique index if not exists logs_owner_client_log_idx on logs(owner_id, client_log_id) where client_log_id <> ''");
   await pool.query("alter table devices add column if not exists avatar_key text");
   await pool.query("alter table day_shares add column if not exists expires_at timestamptz");
@@ -638,7 +656,7 @@ async function dayPayload(date, ownerId = null) {
   const params = ownerId ? [normalizedDate, ownerId] : [normalizedDate];
   const { rows } = await pool.query(
     `select id, owner_name, owner_tag, timestamp_ms, log_date, title, category, caffeine_mg,
-      cafe, location_name, friend_names, image_key, created_at
+      cafe, location_name, friend_names, sticker, image_key, original_image_key, created_at
      from logs where log_date = $1 ${ownerClause} order by timestamp_ms asc`,
     params,
   );
@@ -699,6 +717,7 @@ function rowToLog(row) {
     cafe: row.cafe,
     locationName: row.location_name,
     friendNames: Array.isArray(row.friend_names) ? row.friend_names : [],
+    sticker: row.sticker || "",
     imageUrl: row.image_key ? objectUrl(row.image_key) : null,
     originalImageUrl: row.original_image_key ? objectUrl(row.original_image_key) : null,
     createdAt: row.created_at,

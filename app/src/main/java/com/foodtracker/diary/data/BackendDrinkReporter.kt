@@ -72,6 +72,7 @@ private fun FoodLog.toBackendJson(settings: AppSettings?): JSONObject =
         .put("latitude", latitude ?: JSONObject.NULL)
         .put("longitude", longitude ?: JSONObject.NULL)
         .put("friendNames", JSONArray(friendNames))
+        .put("sticker", sticker)
         .put("ownerId", settings?.ownerId ?: "")
         .put("ownerName", settings?.displayName ?: "")
         .put("ownerTag", settings?.username?.ifBlank { settings.displayName.toFriendTag() } ?: "")

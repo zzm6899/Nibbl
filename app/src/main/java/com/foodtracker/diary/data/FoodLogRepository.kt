@@ -162,6 +162,7 @@ private fun FoodLog.toJson() = JSONObject()
     .put("latitude", latitude ?: JSONObject.NULL)
     .put("longitude", longitude ?: JSONObject.NULL)
     .put("friendNames", JSONArray(friendNames))
+    .put("sticker", sticker)
 
 private fun String.toFoodLogArray(): JSONArray {
     val trimmed = trim()
@@ -202,6 +203,7 @@ private fun JSONObject.toFoodLogOrNull(): FoodLog? = runCatching {
         latitude = optDoubleOrNull("latitude"),
         longitude = optDoubleOrNull("longitude"),
         friendNames = optStringArray("friendNames").ifEmpty { optStringArray("friends") },
+        sticker = optNonBlankString("sticker") ?: "",
     )
 }.getOrNull()
 

@@ -13,6 +13,7 @@ data class FoodLog(
     val latitude: Double?,
     val longitude: Double?,
     val friendNames: List<String>,
+    val sticker: String = "",
 )
 
 data class FoodLogDaySummary(

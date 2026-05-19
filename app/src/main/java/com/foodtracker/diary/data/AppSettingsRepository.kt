@@ -23,6 +23,8 @@ data class AppSettings(
     val lastPurchaseSyncMillis: Long = 0L,
     val backgroundRemovalMonth: String = "",
     val backgroundRemovalsThisMonth: Int = 0,
+    val themeId: String = "pastel",
+    val stickerPack: String = "sweet",
 ) {
     companion object {
         const val DEFAULT_DISPLAY_NAME = "Me"
@@ -113,6 +115,8 @@ private fun AppSettings.normalized(): AppSettings =
         displayName = displayName.trim().ifBlank { AppSettings.DEFAULT_DISPLAY_NAME }.take(48),
         username = username.toFriendInviteCode(),
         profileImagePath = profileImagePath?.trim()?.takeIf { it.isNotBlank() },
+        themeId = themeId.trim().lowercase().takeIf { it in setOf("pastel", "berry", "mint", "sunny") } ?: "pastel",
+        stickerPack = stickerPack.trim().lowercase().takeIf { it in setOf("sweet", "cafe", "sparkle", "fresh") } ?: "sweet",
         shareHost = ShareLinkTokenHelper.normalizeShareHost(shareHost)
             .replace("https://api.nibbl.z2hs.au", ShareLinkTokenHelper.DEFAULT_SHARE_HOST)
             .replace("https://sipday.local", ShareLinkTokenHelper.DEFAULT_SHARE_HOST)
@@ -133,6 +137,8 @@ private fun AppSettings.toJson(): JSONObject = JSONObject()
     .put("lastPurchaseSyncMillis", lastPurchaseSyncMillis)
     .put("backgroundRemovalMonth", backgroundRemovalMonth)
     .put("backgroundRemovalsThisMonth", backgroundRemovalsThisMonth)
+    .put("themeId", themeId)
+    .put("stickerPack", stickerPack)
 
 private fun JSONObject.toAppSettings(): AppSettings =
     AppSettings(
@@ -159,6 +165,8 @@ private fun JSONObject.toAppSettings(): AppSettings =
         lastPurchaseSyncMillis = optLong("lastPurchaseSyncMillis", 0L),
         backgroundRemovalMonth = optNonBlankString("backgroundRemovalMonth") ?: "",
         backgroundRemovalsThisMonth = optInt("backgroundRemovalsThisMonth", 0),
+        themeId = optNonBlankString("themeId") ?: "pastel",
+        stickerPack = optNonBlankString("stickerPack") ?: "sweet",
     )
 
 private fun JSONObject.optNonBlankString(name: String): String? =

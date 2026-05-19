@@ -115,6 +115,7 @@ import coil.compose.rememberAsyncImagePainter
 import com.foodtracker.diary.data.AppSettings
 import com.foodtracker.diary.data.AppSettingsRepository
 import com.foodtracker.diary.data.BackgroundRemover
+import com.foodtracker.diary.data.BackendBackupClient
 import com.foodtracker.diary.data.BackendDeviceClient
 import com.foodtracker.diary.data.BackendDrinkReporter
 import com.foodtracker.diary.data.BackendFriendTagChecker
@@ -206,6 +207,8 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
     var shareLink by remember { mutableStateOf<String?>(null) }
     var selectedFriend by remember { mutableStateOf<String?>(null) }
     var selectedCategory by remember { mutableStateOf<DrinkCategory?>(null) }
+    var cafeFilter by remember { mutableStateOf("") }
+    var caffeinatedOnly by remember { mutableStateOf(false) }
     var processing by remember { mutableStateOf(false) }
     var processingPreviewPath by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -219,7 +222,9 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
     var handledSharedImageUri by remember { mutableStateOf<String?>(null) }
     val filteredLogs = logs.filter { log ->
         (selectedFriend == null || log.friendNames.contains(selectedFriend)) &&
-            (selectedCategory == null || log.category == selectedCategory)
+            (selectedCategory == null || log.category == selectedCategory) &&
+            (cafeFilter.isBlank() || log.cafe.contains(cafeFilter, ignoreCase = true) || log.locationName.contains(cafeFilter, ignoreCase = true)) &&
+            (!caffeinatedOnly || (log.caffeineMg ?: 0) > 0)
     }
 
     fun showLogImmediately(log: FoodLog) {
@@ -432,6 +437,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
         importImage(uri)
     }
 
+    FoodDiaryTheme(settings.themeId) {
     Scaffold(
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)) {
@@ -490,7 +496,24 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                         ModePicker(mode = mode, onMode = { mode = it })
                         Spacer(Modifier.height(8.dp))
                         DiaryPulse(selectedDate, mode, filteredLogs, repository)
-                        if (selectedFriend != null || selectedCategory != null) {
+                        if (settings.plusUnlocked || settings.proActive) {
+                            Spacer(Modifier.height(8.dp))
+                            SummaryCard(selectedDate, mode, filteredLogs, repository)
+                            Spacer(Modifier.height(8.dp))
+                            AdvancedFilterPanel(
+                                friends = logs.flatMap { it.friendNames }.distinct().sorted(),
+                                categories = categories,
+                                selectedFriend = selectedFriend,
+                                selectedCategory = selectedCategory,
+                                cafeFilter = cafeFilter,
+                                caffeinatedOnly = caffeinatedOnly,
+                                onFriend = { selectedFriend = it },
+                                onCategory = { selectedCategory = it },
+                                onCafeFilter = { cafeFilter = it },
+                                onCaffeinatedOnly = { caffeinatedOnly = it },
+                            )
+                        }
+                        if (selectedFriend != null || selectedCategory != null || cafeFilter.isNotBlank() || caffeinatedOnly) {
                             Spacer(Modifier.height(8.dp))
                             ActiveFilters(
                                 selectedFriend = selectedFriend,
@@ -524,10 +547,12 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                                     date = selectedDate,
                                     logs = repository.logsForDate(filteredLogs, selectedDate),
                                     hasAnyLogs = logs.isNotEmpty(),
-                                    hasActiveFilters = selectedFriend != null || selectedCategory != null,
+                                    hasActiveFilters = selectedFriend != null || selectedCategory != null || cafeFilter.isNotBlank() || caffeinatedOnly,
                                     onClearFilters = {
                                         selectedFriend = null
                                         selectedCategory = null
+                                        cafeFilter = ""
+                                        caffeinatedOnly = false
                                     },
                                     onDetails = { detailLog = it },
                                     onRepeat = { log -> scope.launch { repeatLog(log) } },
@@ -575,6 +600,9 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                         billingState = billingState,
                         billingMessage = billingMessage,
                         selectedDate = selectedDate,
+                        selectedMode = mode,
+                        logs = logs,
+                        repository = repository,
                         categories = categories,
                         onSettings = { next ->
                             scope.launch {
@@ -619,6 +647,20 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                                 billingMessage = "Purchases checked."
                             }
                         },
+                        onBackupNow = {
+                            val registered = ensureRegisteredSettings()
+                            val count = BackendBackupClient.backupAll(registered.shareHost, logs, registered)
+                            billingMessage = "Backed up $count logs."
+                        },
+                        onRestoreCloud = {
+                            val registered = ensureRegisteredSettings()
+                            val count = BackendBackupClient.restore(repository, registered)
+                            refresh()
+                            billingMessage = "Restored $count cloud logs."
+                        },
+                        onExportRecap = {
+                            shareRecap(context, selectedDate, mode, logs, repository)
+                        },
                     )
                 }
             }
@@ -631,6 +673,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                 ProcessingOverlay(originalPath = processingPreviewPath)
             }
         }
+    }
     }
 
     pending?.let { item ->
@@ -650,8 +693,9 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                     locationName = place,
                     latitude = item.location.latitude,
                     longitude = item.location.longitude,
-                    friendNames = friends,
-                )
+                        friendNames = friends,
+                        sticker = stickerForPack(settings.stickerPack),
+                    )
                 showLogImmediately(log)
                 selectedDate = LocalDate.now()
                 mode = CalendarMode.Day
@@ -1119,6 +1163,9 @@ private fun SettingsScreen(
     billingState: BillingUiState,
     billingMessage: String?,
     selectedDate: LocalDate,
+    selectedMode: CalendarMode,
+    logs: List<FoodLog>,
+    repository: FoodLogRepository,
     categories: List<DrinkCategory>,
     onSettings: (AppSettings) -> Unit,
     onProfilePhoto: () -> Unit,
@@ -1128,6 +1175,9 @@ private fun SettingsScreen(
     onShareProfile: () -> Unit,
     onBuyProduct: (String) -> Unit,
     onRestorePurchases: () -> Unit,
+    onBackupNow: suspend () -> Unit,
+    onRestoreCloud: suspend () -> Unit,
+    onExportRecap: () -> Unit,
 ) {
     var displayName by remember(settings.displayName) { mutableStateOf(settings.displayName) }
     var username by remember(settings.username) { mutableStateOf(settings.username) }
@@ -1136,6 +1186,7 @@ private fun SettingsScreen(
     var profileSaving by remember { mutableStateOf(false) }
     var profileError by remember { mutableStateOf<String?>(null) }
     var shareDayCreating by remember { mutableStateOf(false) }
+    var cloudWorking by remember { mutableStateOf(false) }
     val context = LocalContext.current
     LazyColumn(contentPadding = PaddingValues(bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -1245,6 +1296,32 @@ private fun SettingsScreen(
             }
         }
         item {
+            PremiumFeaturePanel(
+                settings = settings,
+                selectedDate = selectedDate,
+                selectedMode = selectedMode,
+                logs = logs,
+                repository = repository,
+                cloudWorking = cloudWorking,
+                onSettings = onSettings,
+                onBackupNow = {
+                    scope.launch {
+                        cloudWorking = true
+                        onBackupNow()
+                        cloudWorking = false
+                    }
+                },
+                onRestoreCloud = {
+                    scope.launch {
+                        cloudWorking = true
+                        onRestoreCloud()
+                        cloudWorking = false
+                    }
+                },
+                onExportRecap = onExportRecap,
+            )
+        }
+        item {
             Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Safety and support", fontWeight = FontWeight.Black)
@@ -1337,6 +1414,100 @@ private fun SettingsScreen(
                     onRestorePurchases = onRestorePurchases,
                 )
             }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun PremiumFeaturePanel(
+    settings: AppSettings,
+    selectedDate: LocalDate,
+    selectedMode: CalendarMode,
+    logs: List<FoodLog>,
+    repository: FoodLogRepository,
+    cloudWorking: Boolean,
+    onSettings: (AppSettings) -> Unit,
+    onBackupNow: () -> Unit,
+    onRestoreCloud: () -> Unit,
+    onExportRecap: () -> Unit,
+) {
+    val unlocked = settings.plusUnlocked || settings.proActive
+    val scopedLogs = scopedLogsFor(selectedDate, selectedMode, logs, repository)
+    Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Column(Modifier.weight(1f)) {
+                    Text("Plus + Pro features", fontWeight = FontWeight.Black)
+                    Text(
+                        if (unlocked) "Themes, stickers, recap cards, filters, backup, restore, and exports are active."
+                        else "Preview the tools included after upgrade.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                }
+            }
+            Text("Theme", fontWeight = FontWeight.Bold)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("pastel" to "Pastel", "berry" to "Berry", "mint" to "Mint", "sunny" to "Sunny").forEach { (id, label) ->
+                    FilterChip(
+                        selected = settings.themeId == id,
+                        onClick = { if (unlocked) onSettings(settings.copy(themeId = id)) },
+                        enabled = unlocked,
+                        label = { Text(label) },
+                    )
+                }
+            }
+            Text("Sticker pack", fontWeight = FontWeight.Bold)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("sweet" to "Sweet", "cafe" to "Cafe", "sparkle" to "Sparkle", "fresh" to "Fresh").forEach { (id, label) ->
+                    FilterChip(
+                        selected = settings.stickerPack == id,
+                        onClick = { if (unlocked) onSettings(settings.copy(stickerPack = id)) },
+                        enabled = unlocked,
+                        label = { Text(label) },
+                    )
+                }
+            }
+            RecapPreviewCard(selectedDate, selectedMode, scopedLogs)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = onExportRecap, enabled = unlocked, modifier = Modifier.weight(1f)) {
+                    Text("Export recap")
+                }
+                Button(onClick = onBackupNow, enabled = unlocked && !cloudWorking, modifier = Modifier.weight(1f)) {
+                    Text(if (cloudWorking) "Syncing" else "Cloud backup")
+                }
+            }
+            Button(
+                onClick = onRestoreCloud,
+                enabled = settings.proActive && !cloudWorking,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+            ) {
+                Text(if (cloudWorking) "Restoring" else "Restore from cloud")
+            }
+            Text(
+                "Shared albums use public day links. Pro restore pulls your synced logs and images back onto this device.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.secondary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RecapPreviewCard(date: LocalDate, mode: CalendarMode, logs: List<FoodLog>) {
+    val title = when (mode) {
+        CalendarMode.Month -> date.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
+        CalendarMode.Week -> "Week of ${date.weekStart(false).format(DateTimeFormatter.ofPattern("d MMM"))}"
+        CalendarMode.Day -> date.format(DateTimeFormatter.ofPattern("d MMM yyyy"))
+    }
+    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Recap card", fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
+            Text(title, fontWeight = FontWeight.Bold)
+            Text(recapTextFor(logs), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
         }
     }
 }
@@ -1565,6 +1736,48 @@ private fun FriendRail(friends: List<String>, selectedFriend: String?, onFriend:
                     label = { Text(friend) },
                     leadingIcon = { FriendInitial(friend, 22.dp) },
                 )
+            }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun AdvancedFilterPanel(
+    friends: List<String>,
+    categories: List<DrinkCategory>,
+    selectedFriend: String?,
+    selectedCategory: DrinkCategory?,
+    cafeFilter: String,
+    caffeinatedOnly: Boolean,
+    onFriend: (String?) -> Unit,
+    onCategory: (DrinkCategory?) -> Unit,
+    onCafeFilter: (String) -> Unit,
+    onCaffeinatedOnly: (Boolean) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        tonalElevation = 1.dp,
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Advanced filters", fontWeight = FontWeight.Black)
+            FriendRail(friends, selectedFriend, onFriend)
+            CategoryRail(categories, selectedCategory, onCategory)
+            OutlinedTextField(
+                value = cafeFilter,
+                onValueChange = { onCafeFilter(it.take(60)) },
+                label = { Text("Cafe or location") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Caffeinated only", fontWeight = FontWeight.Bold)
+                    Text("Show logs with caffeine entered.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                }
+                Switch(checked = caffeinatedOnly, onCheckedChange = onCaffeinatedOnly)
             }
         }
     }
@@ -2125,15 +2338,31 @@ private fun DayLog(
                 tonalElevation = 2.dp,
             ) {
                 Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Image(
-                        painter = rememberAsyncImagePainter(File(log.imagePath)),
-                        contentDescription = log.title,
-                        modifier = Modifier
-                            .size(78.dp)
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                        contentScale = ContentScale.Fit,
-                    )
+                    Box {
+                        Image(
+                            painter = rememberAsyncImagePainter(File(log.imagePath)),
+                            contentDescription = log.title,
+                            modifier = Modifier
+                                .size(78.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentScale = ContentScale.Fit,
+                        )
+                        if (log.sticker.isNotBlank()) {
+                            Surface(
+                                modifier = Modifier.align(Alignment.BottomEnd),
+                                shape = RoundedCornerShape(999.dp),
+                                color = MaterialTheme.colorScheme.tertiaryContainer,
+                            ) {
+                                Text(
+                                    log.sticker,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Black,
+                                )
+                            }
+                        }
+                    }
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(log.title.ifBlank { log.category.label }, fontWeight = FontWeight.Bold)
@@ -2529,6 +2758,60 @@ private fun copyInviteLink(context: Context, url: String) {
     clipboard.setPrimaryClip(ClipData.newPlainText("Nibbl invite", url))
     Toast.makeText(context, "Invite copied", Toast.LENGTH_SHORT).show()
 }
+
+private fun shareRecap(
+    context: Context,
+    date: LocalDate,
+    mode: CalendarMode,
+    logs: List<FoodLog>,
+    repository: FoodLogRepository,
+) {
+    val scopedLogs = scopedLogsFor(date, mode, logs, repository)
+    val title = when (mode) {
+        CalendarMode.Month -> date.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
+        CalendarMode.Week -> "Week of ${date.weekStart(false).format(DateTimeFormatter.ofPattern("d MMM yyyy"))}"
+        CalendarMode.Day -> date.format(DateTimeFormatter.ofPattern("d MMM yyyy"))
+    }
+    val text = buildString {
+        appendLine("Nibbl recap: $title")
+        appendLine(recapTextFor(scopedLogs))
+        scopedLogs.take(8).forEach { log ->
+            appendLine("- ${log.title.ifBlank { log.category.label }}${log.cafe.takeIf { cafe -> cafe.isNotBlank() }?.let { " at $it" } ?: ""}")
+        }
+    }
+    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, "Nibbl recap: $title")
+        putExtra(Intent.EXTRA_TEXT, text)
+    }
+    context.startActivity(Intent.createChooser(sendIntent, "Share Nibbl recap"))
+}
+
+private fun scopedLogsFor(date: LocalDate, mode: CalendarMode, logs: List<FoodLog>, repository: FoodLogRepository): List<FoodLog> =
+    when (mode) {
+        CalendarMode.Month -> logs.filter { it.loggedDate() in YearMonth.from(date).atDay(1)..YearMonth.from(date).atEndOfMonth() }
+        CalendarMode.Week -> {
+            val start = date.weekStart(false)
+            val end = start.plusDays(6)
+            logs.filter { it.loggedDate() in start..end }
+        }
+        CalendarMode.Day -> repository.logsForDate(logs, date)
+    }.sortedBy { it.timestamp }
+
+private fun recapTextFor(logs: List<FoodLog>): String {
+    val caffeine = logs.sumOf { it.caffeineMg ?: 0 }
+    val cafes = logs.map { it.cafe.trim() }.filter { it.isNotBlank() }.distinct().size
+    val top = logs.groupingBy { it.category.label }.eachCount().maxByOrNull { it.value }?.key ?: "No top type yet"
+    return "${logs.size} logs, $cafes cafes, ${caffeine}mg caffeine, top type: $top."
+}
+
+private fun stickerForPack(pack: String): String =
+    when (pack) {
+        "cafe" -> "cafe"
+        "sparkle" -> "sparkle"
+        "fresh" -> "fresh"
+        else -> "yum"
+    }
 
 private fun shareInviteLink(context: Context, url: String) {
     val sendIntent = Intent(Intent.ACTION_SEND).apply {
