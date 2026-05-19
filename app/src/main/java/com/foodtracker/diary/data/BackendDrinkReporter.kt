@@ -4,7 +4,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import java.io.DataOutputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -32,9 +35,11 @@ class BackendDrinkReporter {
                 try {
                     DataOutputStream(connection.outputStream).use { output ->
                         output.writeMultipartField(boundary, "payload", log.toBackendJson(settings).toString())
-                        File(log.imagePath).takeIf { it.isFile }?.let { output.writeMultipartFile(boundary, "cutout", it) }
+                        File(log.imagePath).takeIf { it.isFile }?.let {
+                            output.writeMultipartImage(boundary, "cutout", it, maxDimension = 1280, quality = 82)
+                        }
                         File(log.originalImagePath).takeIf { it.isFile && it.absolutePath != log.imagePath }?.let {
-                            output.writeMultipartFile(boundary, "original", it)
+                            output.writeMultipartImage(boundary, "original", it, maxDimension = 1600, quality = 78)
                         }
                         output.writeBytes("--$boundary--\r\n")
                     }
@@ -81,15 +86,55 @@ private fun DataOutputStream.writeMultipartField(boundary: String, name: String,
     writeBytes("\r\n")
 }
 
-private fun DataOutputStream.writeMultipartFile(boundary: String, name: String, file: File) {
-    val contentType = when (file.extension.lowercase()) {
-        "png" -> "image/png"
-        "webp" -> "image/webp"
-        else -> "image/jpeg"
+private fun DataOutputStream.writeMultipartImage(
+    boundary: String,
+    name: String,
+    file: File,
+    maxDimension: Int,
+    quality: Int,
+) {
+    val optimized = file.optimizedUploadBytes(maxDimension, quality)
+    val bytes = optimized ?: file.readBytes()
+    val filename = if (optimized != null) "${file.nameWithoutExtension}.webp" else file.name
+    val contentType = if (optimized != null) {
+        "image/webp"
+    } else {
+        when (file.extension.lowercase()) {
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            else -> "image/jpeg"
+        }
     }
     writeBytes("--$boundary\r\n")
-    writeBytes("Content-Disposition: form-data; name=\"$name\"; filename=\"${file.name}\"\r\n")
+    writeBytes("Content-Disposition: form-data; name=\"$name\"; filename=\"$filename\"\r\n")
     writeBytes("Content-Type: $contentType\r\n\r\n")
-    file.inputStream().use { input -> input.copyTo(this) }
+    write(bytes)
     writeBytes("\r\n")
+}
+
+private fun File.optimizedUploadBytes(maxDimension: Int, quality: Int): ByteArray? = runCatching {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(absolutePath, bounds)
+    val longestSide = maxOf(bounds.outWidth, bounds.outHeight)
+    if (longestSide <= 0) return@runCatching null
+
+    val sample = highestPowerOfTwoAtMost((longestSide / maxDimension).coerceAtLeast(1))
+    val bitmap = BitmapFactory.decodeFile(
+        absolutePath,
+        BitmapFactory.Options().apply { inSampleSize = sample },
+    ) ?: return@runCatching null
+
+    ByteArrayOutputStream().use { stream ->
+        @Suppress("DEPRECATION")
+        val ok = bitmap.compress(Bitmap.CompressFormat.WEBP, quality.coerceIn(1, 100), stream)
+        bitmap.recycle()
+        if (!ok) return@runCatching null
+        stream.toByteArray().takeIf { it.isNotEmpty() && it.size < length() }
+    }
+}.getOrNull()
+
+private fun highestPowerOfTwoAtMost(value: Int): Int {
+    var sample = 1
+    while (sample * 2 <= value) sample *= 2
+    return sample
 }

@@ -11,6 +11,8 @@ services:
       PORT: 8090
       DATABASE_URL: postgres://nibbl:${POSTGRES_PASSWORD:?set-postgres-password}@postgres:5432/nibbl
       NIBBL_ADMIN_PASSWORD: ${NIBBL_ADMIN_PASSWORD:?set-admin-password}
+      NIBBL_SHARE_EXPIRY_DAYS: ${NIBBL_SHARE_EXPIRY_DAYS:-30}
+      NIBBL_STORAGE_CAPACITY_BYTES: ${NIBBL_STORAGE_CAPACITY_BYTES:-53687091200}
       OBJECT_STORAGE: s3
       S3_ENDPOINT: http://minio:9000
       S3_REGION: us-east-1

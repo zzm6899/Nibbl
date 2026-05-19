@@ -25,6 +25,8 @@
         <div><span>Database</span><strong id="database">-</strong></div>
         <div><span>Objects</span><strong id="objects">-</strong></div>
         <div><span>Storage mode</span><strong id="objectMode">-</strong></div>
+        <div><span>Storage used</span><strong id="storageUsed">-</strong></div>
+        <div><span>Object files</span><strong id="storageFiles">-</strong></div>
         <div><span>Last upload</span><strong id="lastUpload">-</strong></div>
       </section>
 
@@ -61,7 +63,7 @@
         <div class="panel-title"><strong>Recent uploads</strong><span>Latest synced app entries</span></div>
         <table>
           <thead>
-            <tr><th>When</th><th>Owner</th><th>Food + drink</th><th>Cafe</th><th>Type</th></tr>
+            <tr><th>Photo</th><th>When</th><th>Owner</th><th>Food + drink</th><th>Cafe</th><th>Type</th></tr>
           </thead>
           <tbody id="logs"></tbody>
         </table>
@@ -96,6 +98,8 @@
         setText("database", stats.health?.database || "-");
         setText("objects", stats.health?.objectStorage || "-");
         setText("objectMode", stats.health?.objectMode || "-");
+        setText("storageUsed", formatBytes(stats.storage?.bytes || 0, stats.storage?.capacityBytes || 0, stats.storage?.percentUsed));
+        setText("storageFiles", stats.storage?.files ?? 0);
         setText("lastUpload", stats.lastUploadAt ? formatSydneyDateTime(stats.lastUploadAt) : "None yet");
         renderRankList("recentDays", (stats.recentDays || []).map((item) => ({ label: item.date, total: item.total })));
         renderRankList("topCategories", stats.topCategories || []);
@@ -106,6 +110,7 @@
         renderShares(stats.recentShares || []);
         document.getElementById("logs").innerHTML = (Array.isArray(logs) ? logs : []).map((log) => `
           <tr>
+            <td>${log.imageUrl ? `<a href="${escapeHtml(log.imageUrl)}"><img class="admin-thumb" src="${escapeHtml(log.imageUrl)}" alt=""></a>` : `<span class="admin-no-image">No image</span>`}</td>
             <td>${formatSydneyDateTime(log.timestamp)}</td>
             <td>${escapeHtml(publicOwner(log))}</td>
             <td>${escapeHtml(log.title || "Food + drink")}</td>
@@ -143,7 +148,7 @@
       function renderShares(rows) {
         document.getElementById("recentShares").innerHTML = rows.length ? rows.map((row) => `
           <a class="rank-row" href="${escapeHtml(row.url)}">
-            <span>${escapeHtml(publicOwner(row))} · ${escapeHtml(row.date || "")} · ${escapeHtml(formatSydneyTime(row.createdAt))}</span>
+            <span>${escapeHtml(publicOwner(row))} · ${escapeHtml(row.date || "")} · ${escapeHtml(formatSydneyTime(row.createdAt))} · expires ${escapeHtml(formatSydneyDate(row.expiresAt))}</span>
             <strong>Open</strong>
           </a>
         `).join("") : `<div class="empty-row">No shares yet</div>`;
@@ -175,6 +180,29 @@
         }).format(new Date(value));
       }
 
+      function formatSydneyDate(value) {
+        if (!value) return "never";
+        return new Intl.DateTimeFormat("en-AU", {
+          timeZone: "Australia/Sydney",
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        }).format(new Date(value));
+      }
+
+      function formatBytes(bytes, capacityBytes, percentUsed) {
+        const units = ["B", "KB", "MB", "GB", "TB"];
+        let value = Number(bytes || 0);
+        let unit = 0;
+        while (value >= 1024 && unit < units.length - 1) {
+          value /= 1024;
+          unit += 1;
+        }
+        const label = `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
+        if (!capacityBytes) return label;
+        return `${label} · ${percentUsed ?? 0}%`;
+      }
+
       function escapeHtml(value) {
         return String(value ?? "").replace(/[&<>"']/g, (char) => ({
           "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -186,7 +214,7 @@
       load().catch(showError);
 
       function showError(error) {
-        document.getElementById("logs").innerHTML = `<tr><td colspan="5">${escapeHtml(error.message)}</td></tr>`;
+        document.getElementById("logs").innerHTML = `<tr><td colspan="6">${escapeHtml(error.message)}</td></tr>`;
         setText("refreshedAt", "Could not load");
       }
     </script>

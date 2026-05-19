@@ -21,7 +21,11 @@ NIBBL_ADMIN_PASSWORD=replace-with-an-admin-password
 POSTGRES_PASSWORD=replace-with-a-postgres-password
 MINIO_ROOT_USER=nibblminio
 MINIO_ROOT_PASSWORD=replace-with-a-minio-password
+NIBBL_SHARE_EXPIRY_DAYS=30
+NIBBL_STORAGE_CAPACITY_BYTES=53687091200
 ```
+
+`NIBBL_STORAGE_CAPACITY_BYTES` is only the admin dashboard capacity marker. It does not hard-limit MinIO; set it to the storage budget you want to watch, for example `53687091200` for 50 GB.
 
 4. In TrueNAS Apps, create or update the custom app from `docker-compose.yml`.
 5. Open:

@@ -845,6 +845,11 @@ a.button.secondary, button.secondary {
   gap: 12px;
 }
 
+.share-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 260px));
+  justify-content: center;
+}
+
 .feature-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 18px;
@@ -918,6 +923,7 @@ a.button.secondary, button.secondary {
 
 .card img, .placeholder {
   width: 100%;
+  max-height: 220px;
   aspect-ratio: 1;
   object-fit: contain;
   border-radius: 16px;
@@ -1108,6 +1114,27 @@ th, td {
   border-bottom: 1px solid #eaded6;
   text-align: left;
   vertical-align: top;
+}
+
+.admin-thumb {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  border-radius: 14px;
+  background: #fff7ed;
+  box-shadow: 0 8px 18px rgba(122,87,65,.12);
+}
+
+.admin-no-image {
+  display: inline-grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  background: #f7efe8;
+  color: #9b7a6b;
+  font-size: 12px;
+  font-weight: 850;
 }
 
 th {

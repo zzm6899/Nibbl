@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CreateBucketCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { CreateBucketCommand, GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import express from "express";
 import multer from "multer";
 import pg from "pg";
@@ -16,6 +16,8 @@ const objectMode = (process.env.OBJECT_STORAGE || "local").toLowerCase();
 const localObjectDir = process.env.OBJECT_LOCAL_DIR || "/data/objects";
 const s3Bucket = process.env.S3_BUCKET || "nibbl";
 const s3PublicBaseUrl = (process.env.S3_PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+const shareExpiryDays = Math.max(1, Math.min(Number(process.env.NIBBL_SHARE_EXPIRY_DAYS || 30), 365));
+const storageCapacityBytes = Math.max(0, Number(process.env.NIBBL_STORAGE_CAPACITY_BYTES || 0));
 
 const pool = new pg.Pool({ connectionString: databaseUrl });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } });
@@ -251,13 +253,14 @@ app.post("/api/nibbl/shares/day", requireDeviceAuth, async (req, res, next) => {
     const date = dateFromSlug(text(req.body.date, 32));
     const token = crypto.randomBytes(18).toString("base64url");
     await pool.query(
-      `insert into day_shares (token, owner_id, owner_name, owner_tag, log_date)
-       values ($1,$2,$3,$4,$5)`,
-      [token, req.device.owner_id, req.device.owner_name, req.device.owner_tag, date],
+      `insert into day_shares (token, owner_id, owner_name, owner_tag, log_date, expires_at)
+       values ($1,$2,$3,$4,$5, now() + ($6::text || ' days')::interval)`,
+      [token, req.device.owner_id, req.device.owner_name, req.device.owner_tag, date, shareExpiryDays],
     );
     res.status(201).json({
       token,
       date,
+      expiresAt: new Date(Date.now() + shareExpiryDays * 24 * 60 * 60 * 1000).toISOString(),
       url: `/?s=${encodeURIComponent(token)}`,
     });
   } catch (error) {
@@ -415,9 +418,11 @@ async function bootstrap() {
       owner_name text not null default '',
       owner_tag text not null default '',
       log_date date not null,
-      created_at timestamptz not null default now()
+      created_at timestamptz not null default now(),
+      expires_at timestamptz
     );
     create index if not exists day_shares_date_idx on day_shares(log_date);
+    create index if not exists day_shares_expires_at_idx on day_shares(expires_at);
     create table if not exists waitlist_signups (
       email text primary key,
       source text not null default 'landing',
@@ -429,6 +434,8 @@ async function bootstrap() {
   await pool.query("alter table logs add column if not exists client_log_id text not null default ''");
   await pool.query("create unique index if not exists logs_owner_client_log_idx on logs(owner_id, client_log_id) where client_log_id <> ''");
   await pool.query("alter table devices add column if not exists avatar_key text");
+  await pool.query("alter table day_shares add column if not exists expires_at timestamptz");
+  await pool.query("update day_shares set expires_at = created_at + ($1::text || ' days')::interval where expires_at is null", [shareExpiryDays]);
   await ensureObjectStorage();
 }
 
@@ -480,6 +487,7 @@ async function readStats(includeRecent = false) {
     { rows: avatarDevices },
     { rows: recentUploads },
     { rows: waitlist },
+    storage,
   ] = await Promise.all([
     pool.query(`
       select
@@ -518,6 +526,7 @@ async function readStats(includeRecent = false) {
     pool.query("select count(*)::int as avatar_devices from devices where avatar_key is not null"),
     pool.query("select max(created_at) as last_upload_at from logs"),
     pool.query("select count(*)::int as waitlist_signups from waitlist_signups"),
+    storageStats(),
   ]);
   const countRow = counts[0] || {};
   const stats = {
@@ -539,6 +548,7 @@ async function readStats(includeRecent = false) {
     avatarDevices: avatarDevices[0]?.avatar_devices || 0,
     waitlistSignups: waitlist[0]?.waitlist_signups || 0,
     lastUploadAt: recentUploads[0]?.last_upload_at || null,
+    storage,
     health: {
       database: dbReady ? "ready" : "waiting",
       objectStorage: objectReady ? "ready" : "waiting",
@@ -587,7 +597,7 @@ async function readStats(includeRecent = false) {
         order by total desc, source asc
       `),
       pool.query(`
-        select token, owner_name, owner_tag, log_date, created_at
+        select token, owner_name, owner_tag, log_date, created_at, expires_at
         from day_shares
         order by created_at desc
         limit 8
@@ -610,6 +620,7 @@ async function readStats(includeRecent = false) {
       ownerTag: row.owner_tag,
       date: normalizeDateValue(row.log_date),
       createdAt: row.created_at,
+      expiresAt: row.expires_at,
       url: `/?s=${encodeURIComponent(row.token)}`,
     }));
     stats.recentWaitlist = recentWaitlist.map((row) => ({
@@ -641,7 +652,10 @@ async function shareByToken(token) {
     error.status = 404;
     throw error;
   }
-  const { rows } = await pool.query("select token, owner_id, owner_name, owner_tag, log_date from day_shares where token = $1", [cleanToken]);
+  const { rows } = await pool.query(
+    "select token, owner_id, owner_name, owner_tag, log_date, expires_at from day_shares where token = $1 and (expires_at is null or expires_at > now())",
+    [cleanToken],
+  );
   if (!rows.length) {
     const error = new Error("Share not found");
     error.status = 404;
@@ -686,6 +700,7 @@ function rowToLog(row) {
     locationName: row.location_name,
     friendNames: Array.isArray(row.friend_names) ? row.friend_names : [],
     imageUrl: row.image_key ? objectUrl(row.image_key) : null,
+    originalImageUrl: row.original_image_key ? objectUrl(row.original_image_key) : null,
     createdAt: row.created_at,
   };
 }
@@ -729,6 +744,68 @@ async function sendObject(key, res) {
   }
   res.type(contentTypeFor(key));
   res.sendFile(path.join(localObjectDir, key));
+}
+
+async function storageStats() {
+  const local = await localStorageStats();
+  if (!s3) {
+    return {
+      mode: "local",
+      bytes: local.bytes,
+      files: local.files,
+      capacityBytes: storageCapacityBytes,
+      percentUsed: storageCapacityBytes ? Math.round((local.bytes / storageCapacityBytes) * 1000) / 10 : null,
+      path: localObjectDir,
+    };
+  }
+  const remote = await s3StorageStats().catch(() => null);
+  const bytes = remote?.bytes ?? local.bytes;
+  const files = remote?.files ?? local.files;
+  return {
+    mode: remote ? "s3" : "local-fallback",
+    bytes,
+    files,
+    capacityBytes: storageCapacityBytes,
+    percentUsed: storageCapacityBytes ? Math.round((bytes / storageCapacityBytes) * 1000) / 10 : null,
+    path: remote ? s3Bucket : localObjectDir,
+  };
+}
+
+async function localStorageStats() {
+  let bytes = 0;
+  let files = 0;
+  async function walk(dir) {
+    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+    await Promise.all(entries.map(async (entry) => {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+      } else if (entry.isFile()) {
+        const stat = await fs.stat(fullPath).catch(() => null);
+        if (stat) {
+          bytes += stat.size;
+          files += 1;
+        }
+      }
+    }));
+  }
+  await walk(localObjectDir);
+  return { bytes, files };
+}
+
+async function s3StorageStats() {
+  let bytes = 0;
+  let files = 0;
+  let ContinuationToken;
+  do {
+    const result = await s3.send(new ListObjectsV2Command({ Bucket: s3Bucket, ContinuationToken }));
+    for (const item of result.Contents || []) {
+      bytes += item.Size || 0;
+      files += 1;
+    }
+    ContinuationToken = result.NextContinuationToken;
+  } while (ContinuationToken);
+  return { bytes, files };
 }
 
 function objectUrl(key) {
