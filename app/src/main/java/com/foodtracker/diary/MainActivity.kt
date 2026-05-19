@@ -2326,7 +2326,7 @@ private fun LogEditDialog(
     var caffeine by remember(log.id) { mutableStateOf(log.caffeineMg?.toString().orEmpty()) }
     var cafe by remember(log.id) { mutableStateOf(log.cafe) }
     var place by remember(log.id) { mutableStateOf(log.locationName) }
-    var selectedFriends by remember(log.id) { mutableStateOf(log.friendNames.ifEmpty { listOf("Me") }) }
+    var selectedFriends by remember(log.id) { mutableStateOf(log.friendNames) }
     val friendSuggestions = (listOf("Me") + crewNames + selectedFriends).distinct()
 
     AlertDialog(
@@ -2558,12 +2558,12 @@ private fun EntryDialog(
     crewNames: List<String>,
     categories: List<DrinkCategory>,
 ) {
-    var title by remember { mutableStateOf("Matcha") }
-    var category by remember(categories) { mutableStateOf(categories.firstOrNull { it == DrinkCategory.Matcha } ?: categories.firstOrNull() ?: DrinkCategory.Drink) }
+    var title by remember { mutableStateOf("Food + drink") }
+    var category by remember(categories) { mutableStateOf(categories.firstOrNull { it == DrinkCategory.Drink } ?: categories.firstOrNull() ?: DrinkCategory.Drink) }
     var caffeine by remember { mutableStateOf("") }
     var cafe by remember { mutableStateOf("") }
     var place by remember { mutableStateOf(pendingLog.location.name) }
-    var selectedFriends by remember { mutableStateOf(listOf("Me")) }
+    var selectedFriends by remember { mutableStateOf(emptyList<String>()) }
     val friendSuggestions = (listOf("Me") + crewNames).distinct()
 
     AlertDialog(
