@@ -4,6 +4,12 @@ plugins {
     id 'org.jetbrains.kotlin.plugin.compose'
 }
 
+def uploadSigningProperties = new Properties()
+def uploadSigningFile = rootProject.file("nibbl-upload-signing.properties")
+if (uploadSigningFile.exists()) {
+    uploadSigningFile.withInputStream { uploadSigningProperties.load(it) }
+}
+
 android {
     namespace 'au.z2hs.nibbl'
     compileSdk 35
@@ -18,6 +24,25 @@ android {
 
     buildFeatures {
         compose true
+    }
+
+    signingConfigs {
+        if (uploadSigningFile.exists()) {
+            release {
+                storeFile rootProject.file(uploadSigningProperties["storeFile"])
+                storePassword uploadSigningProperties["storePassword"]
+                keyAlias uploadSigningProperties["keyAlias"]
+                keyPassword uploadSigningProperties["keyPassword"]
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            if (uploadSigningFile.exists()) {
+                signingConfig signingConfigs.release
+            }
+        }
     }
 
     compileOptions {

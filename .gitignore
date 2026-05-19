@@ -4,6 +4,8 @@
 build/
 app/build/
 local.properties
+nibbl-upload-signing.properties
+keystores/
 *.iml
 screen-*.png
 node_modules/
