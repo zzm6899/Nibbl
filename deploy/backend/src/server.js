@@ -18,6 +18,9 @@ const s3Bucket = process.env.S3_BUCKET || "nibbl";
 const s3PublicBaseUrl = (process.env.S3_PUBLIC_BASE_URL || "").replace(/\/+$/, "");
 const shareExpiryDays = Math.max(1, Math.min(Number(process.env.NIBBL_SHARE_EXPIRY_DAYS || 30), 365));
 const storageCapacityBytes = Math.max(0, Number(process.env.NIBBL_STORAGE_CAPACITY_BYTES || 0));
+const buildSha = process.env.NIBBL_BUILD_SHA || "local";
+const buildTime = process.env.NIBBL_BUILD_TIME || "";
+const ingestSqlVersion = "logs-insert-v2-25-placeholders";
 
 const pool = new pg.Pool({ connectionString: databaseUrl });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } });
@@ -56,6 +59,9 @@ app.use(express.static(publicDir, { extensions: ["html"], index: false }));
 app.get("/api/health", (_req, res) => res.json({
   status: dbReady && objectReady ? "healthy" : dbReady ? "degraded" : "starting",
   backend: "postgres",
+  buildSha,
+  buildTime,
+  ingestSqlVersion,
   database: dbReady ? "ready" : "waiting",
   objectStorage: objectReady ? "ready" : "waiting",
   error: process.env.NIBBL_HEALTH_DETAILS === "true" && !dbReady ? lastBootstrapError || undefined : undefined,
@@ -480,7 +486,7 @@ app.use((error, _req, res, _next) => {
 });
 
 app.listen(port, () => {
-  console.log(`Nibbl backend listening on ${port}`);
+  console.log(`Nibbl backend listening on ${port} build=${buildSha} ingest=${ingestSqlVersion}`);
 });
 bootstrapWithRetry();
 

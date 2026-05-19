@@ -36,6 +36,9 @@ jobs:
           context: .
           file: deploy/backend/Dockerfile
           push: true
+          build-args: |
+            NIBBL_BUILD_SHA=${{ github.sha }}
+            NIBBL_BUILD_TIME=${{ github.run_started_at }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/nibbl-backend:latest
             ghcr.io/${{ github.repository_owner }}/nibbl-backend:${{ github.sha }}
