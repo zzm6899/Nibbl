@@ -518,8 +518,12 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                             ActiveFilters(
                                 selectedFriend = selectedFriend,
                                 selectedCategory = selectedCategory,
+                                cafeFilter = cafeFilter,
+                                caffeinatedOnly = caffeinatedOnly,
                                 onClearFriend = { selectedFriend = null },
                                 onClearCategory = { selectedCategory = null },
+                                onClearCafe = { cafeFilter = "" },
+                                onClearCaffeinated = { caffeinatedOnly = false },
                             )
                         }
                         Spacer(Modifier.height(10.dp))
@@ -1307,15 +1311,21 @@ private fun SettingsScreen(
                 onBackupNow = {
                     scope.launch {
                         cloudWorking = true
-                        onBackupNow()
-                        cloudWorking = false
+                        try {
+                            onBackupNow()
+                        } finally {
+                            cloudWorking = false
+                        }
                     }
                 },
                 onRestoreCloud = {
                     scope.launch {
                         cloudWorking = true
-                        onRestoreCloud()
-                        cloudWorking = false
+                        try {
+                            onRestoreCloud()
+                        } finally {
+                            cloudWorking = false
+                        }
                     }
                 },
                 onExportRecap = onExportRecap,
@@ -1818,10 +1828,14 @@ private fun CategoryRail(categories: List<DrinkCategory>, selectedCategory: Drin
 private fun ActiveFilters(
     selectedFriend: String?,
     selectedCategory: DrinkCategory?,
+    cafeFilter: String,
+    caffeinatedOnly: Boolean,
     onClearFriend: () -> Unit,
     onClearCategory: () -> Unit,
+    onClearCafe: () -> Unit,
+    onClearCaffeinated: () -> Unit,
 ) {
-    if (selectedFriend == null && selectedCategory == null) return
+    if (selectedFriend == null && selectedCategory == null && cafeFilter.isBlank() && !caffeinatedOnly) return
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1839,6 +1853,20 @@ private fun ActiveFilters(
             AssistChip(
                 onClick = onClearCategory,
                 label = { Text("Category: ${it.label}") },
+                leadingIcon = { Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(16.dp)) },
+            )
+        }
+        if (cafeFilter.isNotBlank()) {
+            AssistChip(
+                onClick = onClearCafe,
+                label = { Text("Cafe: $cafeFilter") },
+                leadingIcon = { Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(16.dp)) },
+            )
+        }
+        if (caffeinatedOnly) {
+            AssistChip(
+                onClick = onClearCaffeinated,
+                label = { Text("Caffeine") },
                 leadingIcon = { Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(16.dp)) },
             )
         }
