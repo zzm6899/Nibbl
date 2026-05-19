@@ -3230,28 +3230,35 @@ private fun ShareLinkDialog(url: String, onDismiss: () -> Unit) {
     val kind = shareKindFor(url)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (kind == ShareKind.Friend) "Share friend invite" else "Share diary link") },
+        title = { Text(if (kind == ShareKind.Friend) "Friend invite" else "Public day link") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SharePreviewCard(kind = kind, url = url)
+                SharePreviewCard(kind = kind)
                 Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
-                            url,
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
+                            "Link",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
                         )
-                        IconButton(onClick = {
-                            copyInviteLink(context, url)
-                            onDismiss()
-                        }) {
-                            Icon(Icons.Rounded.ContentCopy, contentDescription = "Copy invite link")
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                url,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            IconButton(onClick = {
+                                copyInviteLink(context, url)
+                                onDismiss()
+                            }) {
+                                Icon(Icons.Rounded.ContentCopy, contentDescription = "Copy invite link")
+                            }
                         }
                     }
                 }
@@ -3277,7 +3284,7 @@ private fun ShareLinkDialog(url: String, onDismiss: () -> Unit) {
                 ) {
                     Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Share...")
+                    Text("Share link")
                 }
             }
         },
@@ -3288,16 +3295,16 @@ private fun ShareLinkDialog(url: String, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun SharePreviewCard(kind: ShareKind, url: String) {
+private fun SharePreviewCard(kind: ShareKind) {
     val title = when (kind) {
-        ShareKind.Friend -> "Friend invite"
-        ShareKind.Day -> "Shared diary day"
+        ShareKind.Friend -> "Adds a friend"
+        ShareKind.Day -> "Shows one diary day"
         ShareKind.Link -> "Nibbl link"
     }
     val subtitle = when (kind) {
-        ShareKind.Friend -> "Opens Nibbl with this person ready to add as a friend."
-        ShareKind.Day -> "Opens a public, read-only food and drink diary for that calendar day."
-        ShareKind.Link -> "Copy or send this link anywhere."
+        ShareKind.Friend -> "Send this to someone so they can add your Nibbl profile."
+        ShareKind.Day -> "Anyone with this link can view the synced photos for this one calendar day."
+        ShareKind.Link -> "Copy it, scan it, or send it with your phone's share sheet."
     }
     Surface(
         shape = RoundedCornerShape(22.dp),
@@ -3319,18 +3326,6 @@ private fun SharePreviewCard(kind: ShareKind, url: String) {
                     Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                MiniPill("opens in app")
-                MiniPill("copyable")
-                MiniPill(if (kind == ShareKind.Day) "web preview" else "friend tag")
-            }
-            Text(
-                url.removePrefix("https://").removePrefix("http://"),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.secondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }
