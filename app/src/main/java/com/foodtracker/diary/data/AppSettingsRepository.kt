@@ -18,6 +18,9 @@ data class AppSettings(
     val apiToken: String = "",
     val shareHost: String = ShareLinkTokenHelper.DEFAULT_SHARE_HOST,
     val hasSeenOnboarding: Boolean = false,
+    val plusUnlocked: Boolean = false,
+    val proActive: Boolean = false,
+    val lastPurchaseSyncMillis: Long = 0L,
 ) {
     companion object {
         const val DEFAULT_DISPLAY_NAME = "Me"
@@ -118,6 +121,9 @@ private fun AppSettings.toJson(): JSONObject = JSONObject()
     .put("apiToken", apiToken)
     .put("shareHost", shareHost)
     .put("hasSeenOnboarding", hasSeenOnboarding)
+    .put("plusUnlocked", plusUnlocked)
+    .put("proActive", proActive)
+    .put("lastPurchaseSyncMillis", lastPurchaseSyncMillis)
 
 private fun JSONObject.toAppSettings(): AppSettings =
     AppSettings(
@@ -139,6 +145,9 @@ private fun JSONObject.toAppSettings(): AppSettings =
             ?: optNonBlankString("host")
             ?: ShareLinkTokenHelper.DEFAULT_SHARE_HOST,
         hasSeenOnboarding = optBoolean("hasSeenOnboarding", false),
+        plusUnlocked = optBoolean("plusUnlocked", false),
+        proActive = optBoolean("proActive", false),
+        lastPurchaseSyncMillis = optLong("lastPurchaseSyncMillis", 0L),
     )
 
 private fun JSONObject.optNonBlankString(name: String): String? =

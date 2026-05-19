@@ -8,6 +8,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
+import android.app.Activity
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -118,6 +119,8 @@ import com.foodtracker.diary.data.BackendDeviceClient
 import com.foodtracker.diary.data.BackendDrinkReporter
 import com.foodtracker.diary.data.BackendFriendTagChecker
 import com.foodtracker.diary.data.BackendShareClient
+import com.foodtracker.diary.data.BillingRepository
+import com.foodtracker.diary.data.BillingUiState
 import com.foodtracker.diary.data.CafeCrewPerson
 import com.foodtracker.diary.data.CafeCrewStore
 import com.foodtracker.diary.data.CategoryStore
@@ -178,6 +181,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
     val scope = rememberCoroutineScope()
     val repository = remember { FoodLogRepository(context) }
     val settingsRepository = remember { AppSettingsRepository(context) }
+    val billingRepository = remember { BillingRepository(context, settingsRepository) }
     val crewStore = remember { CafeCrewStore(context) }
     val categoryStore = remember { CategoryStore(context) }
     val remover = remember { BackgroundRemover(context) }
@@ -201,6 +205,8 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
     var processingPreviewPath by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var friendMessage by remember { mutableStateOf<String?>(null) }
+    var billingState by remember { mutableStateOf(BillingUiState(loading = true)) }
+    var billingMessage by remember { mutableStateOf<String?>(null) }
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
     var pendingAvatarPerson by remember { mutableStateOf<CafeCrewPerson?>(null) }
     var editFriend by remember { mutableStateOf<CafeCrewPerson?>(null) }
@@ -358,6 +364,7 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
 
     LaunchedEffect(Unit) {
         refresh()
+        billingState = billingRepository.loadProducts()
         locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
     }
 
@@ -526,6 +533,8 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                     )
                     AppSection.Settings -> SettingsScreen(
                         settings = settings,
+                        billingState = billingState,
+                        billingMessage = billingMessage,
                         selectedDate = selectedDate,
                         categories = categories,
                         onSettings = { next ->
@@ -552,6 +561,18 @@ private fun DiaryApp(deepLinkUrl: String? = null, sharedImageUri: Uri? = null) {
                         },
                         onShareProfile = {
                             shareLink = ShareLinkTokenHelper.createProfileInviteUrl(settings)
+                        },
+                        onBuyProduct = { productId ->
+                            scope.launch {
+                                billingMessage = billingRepository.launchPurchase(context as Activity, productId)
+                            }
+                        },
+                        onRestorePurchases = {
+                            scope.launch {
+                                settings = billingRepository.restorePurchases()
+                                billingState = billingRepository.loadProducts()
+                                billingMessage = "Purchases checked."
+                            }
                         },
                     )
                 }
@@ -1056,6 +1077,8 @@ private fun CrewScreen(
 @OptIn(ExperimentalLayoutApi::class)
 private fun SettingsScreen(
     settings: AppSettings,
+    billingState: BillingUiState,
+    billingMessage: String?,
     selectedDate: LocalDate,
     categories: List<DrinkCategory>,
     onSettings: (AppSettings) -> Unit,
@@ -1064,6 +1087,8 @@ private fun SettingsScreen(
     onDeleteCategory: (DrinkCategory) -> Unit,
     onShareDay: suspend () -> Unit,
     onShareProfile: () -> Unit,
+    onBuyProduct: (String) -> Unit,
+    onRestorePurchases: () -> Unit,
 ) {
     var displayName by remember(settings.displayName) { mutableStateOf(settings.displayName) }
     var username by remember(settings.username) { mutableStateOf(settings.username) }
@@ -1076,6 +1101,15 @@ private fun SettingsScreen(
         item {
             Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
             Text("Diary defaults, friends, and sharing.", color = MaterialTheme.colorScheme.secondary)
+        }
+        item {
+            MonetizationCard(
+                settings = settings,
+                billingState = billingState,
+                billingMessage = billingMessage,
+                onBuyProduct = onBuyProduct,
+                onRestorePurchases = onRestorePurchases,
+            )
         }
         item {
             Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
@@ -1240,6 +1274,94 @@ private fun SettingsScreen(
             }
         }
     }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun MonetizationCard(
+    settings: AppSettings,
+    billingState: BillingUiState,
+    billingMessage: String?,
+    onBuyProduct: (String) -> Unit,
+    onRestorePurchases: () -> Unit,
+) {
+    Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.tertiaryContainer, tonalElevation = 2.dp) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)) {
+                    Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.padding(10.dp))
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("Nibbl Plus + Pro", fontWeight = FontWeight.Black)
+                    Text(
+                        when {
+                            settings.proActive -> "Pro is active."
+                            settings.plusUnlocked -> "Plus is unlocked."
+                            else -> "Unlock extra themes, unlimited logs, sync, and friend albums."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                }
+            }
+            if (billingState.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                BillingProductButton(
+                    title = "Nibbl Plus",
+                    fallback = "One-time unlock",
+                    productId = BillingRepository.NIBBL_PLUS_LIFETIME,
+                    billingState = billingState,
+                    onBuyProduct = onBuyProduct,
+                )
+                BillingProductButton(
+                    title = "Pro Monthly",
+                    fallback = "Cloud sync",
+                    productId = BillingRepository.NIBBL_PRO_MONTHLY,
+                    billingState = billingState,
+                    onBuyProduct = onBuyProduct,
+                )
+                BillingProductButton(
+                    title = "Pro Yearly",
+                    fallback = "Best value",
+                    productId = BillingRepository.NIBBL_PRO_YEARLY,
+                    billingState = billingState,
+                    onBuyProduct = onBuyProduct,
+                )
+            }
+            Text(
+                billingMessage ?: billingState.message ?: "Create products in Google Play Console using the IDs shown by the buttons.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.secondary,
+            )
+            TextButton(onClick = onRestorePurchases) {
+                Icon(Icons.Rounded.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Restore purchases")
+            }
+        }
+    }
+}
+
+@Composable
+private fun BillingProductButton(
+    title: String,
+    fallback: String,
+    productId: String,
+    billingState: BillingUiState,
+    onBuyProduct: (String) -> Unit,
+) {
+    val product = billingState.products.firstOrNull { it.productId == productId }
+    AssistChip(
+        onClick = { onBuyProduct(productId) },
+        enabled = billingState.available && !billingState.loading,
+        label = {
+            Column {
+                Text(title, fontWeight = FontWeight.Bold)
+                Text(product?.price ?: fallback, style = MaterialTheme.typography.labelSmall)
+                Text(productId, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+            }
+        },
+    )
 }
 
 @Composable
